@@ -112,7 +112,7 @@ export default function MyBooks() {
                     <h3 className="font-semibold text-lg text-gray-900">{t.bookId?.title}</h3>
                     <p className="text-gray-500">by {t.bookId?.author}</p>
                     <p className="text-sm text-gray-400 mt-1">
-                      Borrowed on: {new Date(t.issueDate).toLocaleDateString()}
+                      Borrowed on: {new Date(t.issuedDate).toLocaleDateString()}
                     </p>
                     <div className="mt-2 flex items-center gap-2">
                       <span className={`text-sm font-medium ${isOverdue(t.returnDate) ? "text-red-500" : "text-green-600"}`}>
@@ -153,8 +153,8 @@ export default function MyBooks() {
                         {t.bookId?.title}
                       </Link>
                     </td>
-                    <td className="px-6 py-4 text-gray-600">{new Date(t.issueDate).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-gray-600">{new Date(t.issueDate).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-gray-600">{new Date(t.issuedDate).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-gray-600">{new Date(t.issuedDate).toLocaleDateString()}</td>
                     <td className="px-6 py-4"><span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Returned</span></td>
                   </tr>
                 ))}

@@ -117,7 +117,7 @@ const borrowBook = asyncHandler(async (req, res) => {
         throw new ApiError(400, "You already have this book borrowed");
     }
 
-    const issueDate = new Date();
+    const issuedDate = new Date();
     const returnDate = new Date();
     returnDate.setDate(returnDate.getDate() + 14);
 
@@ -125,7 +125,7 @@ const borrowBook = asyncHandler(async (req, res) => {
         userId,
         bookId,
         transactionType: "borrow",
-        issueDate,
+        issuedDate,
         returnDate
     });
 
@@ -174,7 +174,7 @@ const getMyTransactions = asyncHandler(async (req, res) => {
 
     const transactions = await Transactions.find({ userId })
         .populate("bookId", "title author isbn coverImage")
-        .sort({ issueDate: -1 });
+        .sort({ issuedDate: -1 });
 
     console.log("User transactions:", transactions);
 

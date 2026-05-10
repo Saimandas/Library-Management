@@ -16,7 +16,7 @@ const TransactionsSchema = new mongoose.Schema({
         enum: ["borrow", "return"],
         required: true
     },
-    issuedDate:{
+    issueDate:{
         type: Date,
         default: Date.now
     },

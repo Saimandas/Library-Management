@@ -133,7 +133,7 @@ export default function Profile() {
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{t.bookId?.title}</p>
                         <p className="text-sm text-gray-400">
-                          Borrowed: {new Date(t.issueDate).toLocaleDateString()}
+                          Borrowed: {new Date(t.issuedDate).toLocaleDateString()}
                         </p>
                       </div>
                       <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Returned</span>

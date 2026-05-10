@@ -167,7 +167,7 @@ const getUserById = asyncHandler(async (req, res) => {
 
     const transactions = await Transactions.find({ userId: id })
         .populate("bookId", "title author")
-        .sort({ issueDate: -1 });
+        .sort({ issuedDate: -1 });
 
     return res.status(200).json(new ApiResponse(200, { user, transactions }, "User fetched successfully"));
 });
@@ -332,7 +332,7 @@ const getRecentTransactions = asyncHandler(async (req, res) => {
     const transactions = await Transactions.find()
         .populate("userId", "username email")
         .populate("bookId", "title author")
-        .sort({ issueDate: -1 })
+        .sort({ issuedDate: -1 })
         .limit(parseInt(limit));
 
     return res.status(200).json(new ApiResponse(200, transactions, "Recent transactions fetched"));
@@ -345,7 +345,7 @@ const getAllTransactions = asyncHandler(async (req, res) => {
     const transactions = await Transactions.find()
         .populate("userId", "username email")
         .populate("bookId", "title author")
-        .sort({ issueDate: -1 })
+        .sort({ issuedDate: -1 })
         .skip(skip)
         .limit(parseInt(limit));
 
