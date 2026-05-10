@@ -22,10 +22,12 @@ export default function MyBooks() {
   const fetchData = async () => {
     try {
       const [borrows, trans] = await Promise.all([getMyBorrows(), getMyTransactions()]);
+      console.log("Borrows data:", borrows);
+      console.log("Transactions data:", trans);
       setActiveBorrows(borrows.data);
       setTransactions(trans.data);
     } catch (err) {
-      console.error(err);
+      console.error("Fetch error:", err);
     } finally {
       setLoading(false);
     }

@@ -38,8 +38,12 @@ export default function Profile() {
     }
   };
 
-  const activeBorrows = transactions.filter(t => t.transactionType === "borrow" && !t.returnDate);
+  const activeBorrows = transactions.filter(t => t.transactionType === "borrow");
   const completedBorrows = transactions.filter(t => t.transactionType === "return");
+
+  console.log("All transactions:", transactions);
+  console.log("Active borrows:", activeBorrows.length);
+  console.log("Completed:", completedBorrows.length);
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">

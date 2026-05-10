@@ -176,6 +176,8 @@ const getMyTransactions = asyncHandler(async (req, res) => {
         .populate("bookId", "title author isbn coverImage")
         .sort({ issueDate: -1 });
 
+    console.log("User transactions:", transactions);
+
     return res.status(200).json(new ApiResponse(200, transactions, "Transactions fetched successfully"));
 });
 
@@ -184,8 +186,7 @@ const getMyBorrows = asyncHandler(async (req, res) => {
 
     const activeBorrows = await Transactions.find({
         userId,
-        transactionType: "borrow",
-        returnDate: null
+        transactionType: "borrow"
     }).populate("bookId", "title author isbn coverImage availableCopies");
 
     return res.status(200).json(new ApiResponse(200, activeBorrows, "Active borrows fetched successfully"));
