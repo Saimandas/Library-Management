@@ -16,6 +16,9 @@ const checkIsLoggedIn=asyncHandler(async(req,res,next)=>{
         if (!user) {
             throw new ApiError(400,"Please Login Again");
         }
+        if (user.isActive === false) {
+            throw new ApiError(403,"Account is suspended");
+        }
         const newRefreshToken=generateRefreshToken(user);
         const newAccessToken=generateAccessToken(user);
         user.refreshToken=newRefreshToken;
@@ -37,6 +40,9 @@ const checkIsLoggedIn=asyncHandler(async(req,res,next)=>{
     const user=await User.findById(decodedToken._id);
     if (!user) {
         throw new ApiError(403,"User is not logged in");
+    }
+    if (user.isActive === false) {
+        throw new ApiError(403,"Account is suspended");
     }
     req.user=user;
     return next();

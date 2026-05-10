@@ -1,158 +1,157 @@
-import { useEffect, useState } from "react";
-import { register } from "../../auth/auth";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useDispatch } from "react-redux";
+import { registerUser } from "../../services/readerService";
+import { setUser } from "../../redux/authSlice";
+import { showToast } from "../../components/Toast";
 
-const RegisterPage = () => {
-  const [form, setForm] = useState({
+export default function RegisterPage() {
+  const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
     username: "",
     email: "",
-    password: ""
+    password: "",
+    confirmPassword: "",
   });
-
-  const [isDisabled, setIsDisabled] = useState(true);
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
-
+  const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const { firstName, lastName, username, email, password } = form;
-    if (firstName && lastName && username && email && password) {
-      setIsDisabled(false);
-    } else {
-      setIsDisabled(true);
-    }
-  }, [form]);
-
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const validate = () => {
+    const newErrors = {};
+    if (!formData.firstName) newErrors.firstName = "First name is required";
+    if (!formData.lastName) newErrors.lastName = "Last name is required";
+    if (!formData.username) newErrors.username = "Username is required";
+    else if (formData.username.length < 3) newErrors.username = "Username must be at least 3 characters";
+    if (!formData.email) newErrors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
+    if (!formData.password) newErrors.password = "Password is required";
+    else if (formData.password.length < 6) newErrors.password = "Password must be at least 6 characters";
+    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords do not match";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const handleRegister = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
-    setError("");
-
     try {
-      const data = await register(
-        form.username,
-        form.email,
-        form.password,
-        form.firstName,
-        form.lastName
-      );
-      if (data) navigate("/login");
-    } catch (err) {
-      setError(err.message || "Something went wrong");
+      const data = await registerUser(formData);
+      dispatch(setUser(data.data));
+      showToast(dispatch, "success", "Account created successfully!");
+      navigate("/books");
+    } catch (error) {
+      showToast(dispatch, "error", error);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 to-gray-100 px-4">
-      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg">
+    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4 py-12 bg-gray-50">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
+        <div className="text-center mb-8">
+          <h2 className="text-3xl font-bold text-gray-900">Create Account</h2>
+          <p className="text-gray-500 mt-2">Join our library community</p>
+        </div>
 
-        <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">
-          Create Account
-        </h2>
-
-        <form onSubmit={handleRegister} className="space-y-5">
-
-          <div className="flex gap-3">
-            <div className="w-1/2">
-              <label className="text-sm font-medium text-gray-700">First Name</label>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
               <input
+                type="text"
                 name="firstName"
-                value={form.firstName}
+                value={formData.firstName}
                 onChange={handleChange}
-                type="text"
-                className="mt-1 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                placeholder="First"
+                className={`w-full px-4 py-3 rounded-lg border ${errors.firstName ? "border-red-500" : "border-gray-300"} focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition`}
               />
+              {errors.firstName && <p className="text-red-500 text-sm mt-1">{errors.firstName}</p>}
             </div>
-
-            <div className="w-1/2">
-              <label className="text-sm font-medium text-gray-700">Last Name</label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
               <input
-                name="lastName"
-                value={form.lastName}
-                onChange={handleChange}
                 type="text"
-                className="mt-1 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                placeholder="Last"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleChange}
+                className={`w-full px-4 py-3 rounded-lg border ${errors.lastName ? "border-red-500" : "border-gray-300"} focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition`}
               />
+              {errors.lastName && <p className="text-red-500 text-sm mt-1">{errors.lastName}</p>}
             </div>
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
             <input
-              name="username"
-              value={form.username}
-              onChange={handleChange}
               type="text"
-              className="mt-1 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-              placeholder="Enter username"
+              name="username"
+              value={formData.username}
+              onChange={handleChange}
+              className={`w-full px-4 py-3 rounded-lg border ${errors.username ? "border-red-500" : "border-gray-300"} focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition`}
             />
+            {errors.username && <p className="text-red-500 text-sm mt-1">{errors.username}</p>}
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
             <input
-              name="email"
-              value={form.email}
-              onChange={handleChange}
               type="email"
-              className="mt-1 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-              placeholder="Enter email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              className={`w-full px-4 py-3 rounded-lg border ${errors.email ? "border-red-500" : "border-gray-300"} focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition`}
             />
+            {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
-              name="password"
-              value={form.password}
-              onChange={handleChange}
               type="password"
-              className="mt-1 w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-              placeholder="Enter password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              className={`w-full px-4 py-3 rounded-lg border ${errors.password ? "border-red-500" : "border-gray-300"} focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition`}
             />
+            {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
           </div>
 
-          {error && (
-            <p className="text-red-500 text-sm text-center">{error}</p>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+            <input
+              type="password"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              className={`w-full px-4 py-3 rounded-lg border ${errors.confirmPassword ? "border-red-500" : "border-gray-300"} focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition`}
+            />
+            {errors.confirmPassword && <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>}
+          </div>
 
           <button
             type="submit"
-            disabled={isDisabled || loading}
-            className={`w-full py-2 rounded-lg font-semibold transition 
-            ${isDisabled || loading
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-indigo-600 hover:bg-indigo-700 text-white"
-            }`}
+            disabled={loading}
+            className="w-full py-3 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:bg-emerald-400 transition"
           >
-            {loading ? "Creating..." : "Sign Up"}
+            {loading ? "Creating account..." : "Create Account"}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-600 mt-6">
+        <p className="text-center text-gray-500 mt-6">
           Already have an account?{" "}
-          <span
-            onClick={() => navigate("/login")}
-            className="text-indigo-600 cursor-pointer font-medium"
-          >
-            Login
-          </span>
+          <Link to="/login" className="text-emerald-600 font-semibold hover:underline">
+            Sign in
+          </Link>
         </p>
-
       </div>
     </div>
   );
-};
-
-export default RegisterPage;
+}

@@ -1,52 +1,40 @@
-import { createSlice,createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
+import { createSlice } from "@reduxjs/toolkit";
+import api from "../services/readerService";
 
-export const fetchUser = createAsyncThunk(
-  'auth/fetchUser',
-  async (_, { rejectWithValue }) => {
-    try {
-      const res = await axios.get('/api/admin/current-admin', {
-        withCredentials: true
-      });
+const getInitialState = () => {
+  const user = localStorage.getItem("user");
+  return {
+    user: user ? JSON.parse(user) : null,
+    isAuthenticated: !!user,
+  };
+};
 
-      console.log("res", res);
-
-      return res.data.data;
-    } catch (error) {
-      console.log("error", error?.response?.statusText);
-
-      return rejectWithValue(
-        error.response?.data?.message || "Error"
-      );
-    }
-  }
-);
-const authSlice=createSlice({
-    name:'auth',
-    initialState:{
-        user:null,
-        status:'idle',
-        error:null,
-        isAdmin:undefined
+const authSlice = createSlice({
+  name: "auth",
+  initialState: getInitialState(),
+  reducers: {
+    setUser: (state, action) => {
+      state.user = action.payload;
+      state.isAuthenticated = true;
+      localStorage.setItem("user", JSON.stringify(action.payload));
     },
-    reducers:{},
-    extraReducers:(builder)=>{
-        builder
-            .addCase(fetchUser.pending,(state)=>{
-                state.status='loading';
-            })
-            .addCase(fetchUser.fulfilled,(state,action)=>{
-                state.status='succeeded';
-                state.user=action.payload;
-                state.isAdmin=action.payload?.role==="admin";
-            })
-            .addCase(fetchUser.rejected,(state,action)=>{
-                state.status='failed';
-                state.error=action.payload;
-            });
-    }
-})
+    clearUser: (state) => {
+      state.user = null;
+      state.isAuthenticated = false;
+      localStorage.removeItem("user");
+    },
+  },
+});
 
-export const {  } = authSlice.actions;
- 
+export const { setUser, clearUser } = authSlice.actions;
+
+export const logoutAdmin = () => async (dispatch) => {
+  try {
+    await api.post("/admin/logout");
+  } catch (err) {
+    console.error("Admin logout error:", err);
+  }
+  dispatch(clearUser());
+};
+
 export default authSlice.reducer;

@@ -34,6 +34,12 @@ const booksSchema = new mongoose.Schema({
     publisher: {
         type: String,
         required: true
+    },
+    coverImage: {
+        type: String
+    },
+    description: {
+        type: String
     }
 }, { timestamps: true });
 

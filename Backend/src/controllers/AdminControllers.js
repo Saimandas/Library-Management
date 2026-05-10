@@ -1,21 +1,60 @@
 import Books from "../models/booksModel.js";
 import Category from "../models/categoryModel.js";
+import Transactions from "../models/TransactionsModel.js";
 import User from "../models/userModel.js";
 import { ApiError } from "../utils/apiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/tokensGenerator.js";
+import bcrypt from "bcryptjs";
+
+const adminLogin = asyncHandler(async (req, res) => {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        throw new ApiError(400, "All fields are required");
+    }
+
+    const admin = await User.findOne({ email, isAdmin: true });
+    if (!admin) {
+        throw new ApiError(401, "Invalid admin credentials");
+    }
+
+    const isMatch = await bcrypt.compare(password, admin.password);
+    if (!isMatch) {
+        throw new ApiError(401, "Invalid admin credentials");
+    }
+
+    const accesTokenOptions = {
+        httpOnly: true,
+        secure: false,
+        maxAge: 1000 * 60 * 60
+    };
+
+    const refreshTokenOptions = {
+        httpOnly: true,
+        secure: false,
+        maxAge: 1000 * 60 * 60 * 24 * 10
+    };
+
+    const accessToken = generateAccessToken(admin);
+    const refreshToken = generateRefreshToken(admin);
+
+    if (!accessToken || !refreshToken) {
+        throw new ApiError(500, "Token generation failed");
+    }
+
+    await User.findByIdAndUpdate(admin._id, { refreshToken }, { validateBeforeSave: false });
+
+    return res.status(200)
+        .cookie("accessToken", accessToken, accesTokenOptions)
+        .cookie("refreshToken", refreshToken, refreshTokenOptions)
+        .json(new ApiResponse(200, admin, "Admin logged in successfully"));
+});
 
 const addBook = asyncHandler(async (req, res) => {
     const {
-        title,
-        author,
-        category,
-        totalCopies,
-        edition,
-        isbn,
-        publishedYear,
-        publisher
+        title, author, category, totalCopies, edition, isbn, publishedYear, publisher, coverImage, description
     } = req.body;
 
     if (!title) throw new ApiError(400, "Title is required");
@@ -35,7 +74,9 @@ const addBook = asyncHandler(async (req, res) => {
         edition,
         isbn,
         publishedYear,
-        publisher
+        publisher,
+        coverImage,
+        description
     });
 
     const existingCategory = await Category.findOne({ name: category });
@@ -50,65 +91,321 @@ const addBook = asyncHandler(async (req, res) => {
     const savedBook = await newBook.save();
 
     if (!savedBook) {
-        throw new ApiError(500, "something went wrong in adding the book");
+        throw new ApiError(500, "Failed to add book");
     }
 
-    return res.status(201).json(
-        new ApiResponse(201, savedBook, "book added successfully")
-    );
+    const populatedBook = await Books.findById(savedBook._id).populate("category");
+
+    return res.status(201).json(new ApiResponse(201, populatedBook, "Book added successfully"));
 });
 
-const getCategoryList=asyncHandler(async(req,res)=>{
-    const categories=await Category.find();
+const getCategoryList = asyncHandler(async (req, res) => {
+    const categories = await Category.find().sort({ name: 1 });
     if (!categories) {
-        throw new ApiError(404,"no categories found");
+        throw new ApiError(404, "No categories found");
     }
-    return res.status(200).json(new ApiResponse(200,categories,"categories fetched successfully"));
-})
-const totalBooks=asyncHandler(async(req,res)=>{
-    const total=await Books.countDocuments();
-    return res.status(200).json(new ApiResponse(200,total,"total books fetched successfully"));
-})
+    return res.status(200).json(new ApiResponse(200, categories, "Categories fetched successfully"));
+});
 
-const totalUsers=asyncHandler(async(req,res)=>{
-    const total=await User.countDocuments({isAdmin: { $ne: true } });
-    return res.status(200).json(new ApiResponse(200,total,"total users fetched successfully"));
-})
+const totalBooks = asyncHandler(async (req, res) => {
+    const total = await Books.countDocuments();
+    return res.status(200).json(new ApiResponse(200, total, "Total books fetched"));
+});
 
-const getCurrentAdmin=asyncHandler(async(req,res)=>{
-    const admin=req.admin;
+const totalUsers = asyncHandler(async (req, res) => {
+    const total = await User.countDocuments({ isAdmin: { $ne: true } });
+    return res.status(200).json(new ApiResponse(200, total, "Total users fetched"));
+});
+
+const totalTransactions = asyncHandler(async (req, res) => {
+    const total = await Transactions.countDocuments();
+    return res.status(200).json(new ApiResponse(200, total, "Total transactions fetched"));
+});
+
+const getCurrentAdmin = asyncHandler(async (req, res) => {
+    const admin = req.admin;
     if (!admin) {
-        throw new ApiError(404,"admin not found");
+        throw new ApiError(404, "Admin not found");
     }
-    return res.status(200).json(new ApiResponse(200,admin,"current admin fetched successfully"));
-})
+    return res.status(200).json(new ApiResponse(200, admin, "Current admin fetched"));
+});
 
-const logout=asyncHandler(async(req,res)=>{
-    const admin=req.admin;
-    if (!admin) {
-        throw new ApiError(404,"admin not found");
+const getUsers = asyncHandler(async (req, res) => {
+    const { search, page = 1, limit = 10 } = req.query;
+
+    const query = { isAdmin: { $ne: true } };
+
+    if (search) {
+        query.$or = [
+            { username: { $regex: search, $options: "i" } },
+            { email: { $regex: search, $options: "i" } },
+            { firstName: { $regex: search, $options: "i" } },
+            { lastName: { $regex: search, $options: "i" } }
+        ];
     }
-    admin.refreshToken=null;
-    await admin.save({validateBeforeSave:false});
+
+    const skip = (page - 1) * limit;
+
+    const users = await User.find(query)
+        .select("-password -refreshToken")
+        .skip(skip)
+        .limit(parseInt(limit))
+        .sort({ createdAt: -1 });
+
+    const total = await User.countDocuments(query);
+
+    return res.status(200).json(new ApiResponse(200, { users, total, page: parseInt(page), pages: Math.ceil(total / limit) }, "Users fetched successfully"));
+});
+
+const getUserById = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const user = await User.findById(id).select("-password -refreshToken");
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    const transactions = await Transactions.find({ userId: id })
+        .populate("bookId", "title author")
+        .sort({ issueDate: -1 });
+
+    return res.status(200).json(new ApiResponse(200, { user, transactions }, "User fetched successfully"));
+});
+
+const updateUser = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { firstName, lastName, username, email } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (firstName) user.firstName = firstName;
+    if (lastName) user.lastName = lastName;
+    if (username) user.username = username;
+    if (email) user.email = email;
+
+    await user.save();
+
+    const updatedUser = await User.findById(id).select("-password -refreshToken");
+    return res.status(200).json(new ApiResponse(200, updatedUser, "User updated successfully"));
+});
+
+const deleteUser = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const user = await User.findById(id);
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    await User.findByIdAndDelete(id);
+    return res.status(200).json(new ApiResponse(200, null, "User deleted successfully"));
+});
+
+const toggleUserStatus = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const user = await User.findById(id);
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    user.isActive = !user.isActive;
+    await user.save();
+
+    return res.status(200).json(new ApiResponse(200, user, "User status updated"));
+});
+
+const getBooks = asyncHandler(async (req, res) => {
+    const { search, category, page = 1, limit = 10 } = req.query;
+
+    const query = {};
+
+    if (search) {
+        query.$or = [
+            { title: { $regex: search, $options: "i" } },
+            { author: { $regex: search, $options: "i" } },
+            { isbn: { $regex: search, $options: "i" } }
+        ];
+    }
+
+    if (category) {
+        query.category = category;
+    }
+
+    const skip = (page - 1) * limit;
+
+    const books = await Books.find(query)
+        .populate("category", "name")
+        .skip(skip)
+        .limit(parseInt(limit))
+        .sort({ createdAt: -1 });
+
+    const total = await Books.countDocuments(query);
+
+    return res.status(200).json(new ApiResponse(200, { books, total, page: parseInt(page), pages: Math.ceil(total / limit) }, "Books fetched successfully"));
+});
+
+const getBookById = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const book = await Books.findById(id).populate("category", "name");
+    if (!book) {
+        throw new ApiError(404, "Book not found");
+    }
+
+    return res.status(200).json(new ApiResponse(200, book, "Book fetched successfully"));
+});
+
+const updateBook = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const {
+        title, author, category, totalCopies, edition, isbn, publishedYear, publisher, coverImage, description
+    } = req.body;
+
+    const book = await Books.findById(id);
+    if (!book) {
+        throw new ApiError(404, "Book not found");
+    }
+
+    const oldTotalCopies = book.totalCopies;
+    const oldAvailableCopies = book.availableCopies;
+
+    if (title) book.title = title;
+    if (author) book.author = author;
+    if (edition) book.edition = edition;
+    if (isbn) book.isbn = isbn;
+    if (publishedYear) book.publishedYear = publishedYear;
+    if (publisher) book.publisher = publisher;
+    if (coverImage) book.coverImage = coverImage;
+    if (description) book.description = description;
+    if (totalCopies) book.totalCopies = totalCopies;
+
+    if (totalCopies && totalCopies !== oldTotalCopies) {
+        const borrowedCopies = oldTotalCopies - oldAvailableCopies;
+        book.availableCopies = totalCopies - borrowedCopies;
+    }
+
+    if (category) {
+        const existingCategory = await Category.findOne({ name: category });
+        if (!existingCategory) {
+            const newCategory = await Category.create({ name: category });
+            book.category = newCategory._id;
+        } else {
+            book.category = existingCategory._id;
+        }
+    }
+
+    await book.save();
+
+    const updatedBook = await Books.findById(id).populate("category", "name");
+    return res.status(200).json(new ApiResponse(200, updatedBook, "Book updated successfully"));
+});
+
+const deleteBook = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const book = await Books.findById(id);
+    if (!book) {
+        throw new ApiError(404, "Book not found");
+    }
+
+    const activeBorrows = await Transactions.countDocuments({
+        bookId: id,
+        transactionType: "borrow",
+        returnDate: null
+    });
+
+    if (activeBorrows > 0) {
+        throw new ApiError(400, "Cannot delete book with active borrows");
+    }
+
+    await Books.findByIdAndDelete(id);
+    return res.status(200).json(new ApiResponse(200, null, "Book deleted successfully"));
+});
+
+const getRecentTransactions = asyncHandler(async (req, res) => {
+    const { limit = 10 } = req.query;
+
+    const transactions = await Transactions.find()
+        .populate("userId", "username email")
+        .populate("bookId", "title author")
+        .sort({ issueDate: -1 })
+        .limit(parseInt(limit));
+
+    return res.status(200).json(new ApiResponse(200, transactions, "Recent transactions fetched"));
+});
+
+const getAllTransactions = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (page - 1) * limit;
+
+    const transactions = await Transactions.find()
+        .populate("userId", "username email")
+        .populate("bookId", "title author")
+        .sort({ issueDate: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+    const total = await Transactions.countDocuments();
+
+    return res.status(200).json(new ApiResponse(200, { transactions, total, page: parseInt(page), pages: Math.ceil(total / limit) }, "Transactions fetched"));
+});
+
+const addCategory = asyncHandler(async (req, res) => {
+    const { name } = req.body;
+
+    if (!name) {
+        throw new ApiError(400, "Category name is required");
+    }
+
+    const existing = await Category.findOne({ name: { $regex: new RegExp(`^${name}$`, "i") } });
+    if (existing) {
+        throw new ApiError(400, "Category already exists");
+    }
+
+    const category = await Category.create({ name });
+    return res.status(201).json(new ApiResponse(201, category, "Category added successfully"));
+});
+
+const deleteCategory = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const category = await Category.findById(id);
+    if (!category) {
+        throw new ApiError(404, "Category not found");
+    }
+
+    const booksInCategory = await Books.countDocuments({ category: id });
+    if (booksInCategory > 0) {
+        throw new ApiError(400, "Cannot delete category with books");
+    }
+
+    await Category.findByIdAndDelete(id);
+    return res.status(200).json(new ApiResponse(200, null, "Category deleted successfully"));
+});
+
+const logout = asyncHandler(async (req, res) => {
+    const admin = req.admin;
+    if (!admin) {
+        throw new ApiError(404, "Admin not found");
+    }
+
+    await User.findByIdAndUpdate(admin._id, { refreshToken: null }, { validateBeforeSave: false });
+
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
-    return res.status(200).json(new ApiResponse(200,null,"admin logged out successfully"));
-})
 
-const getUsers=asyncHandler(async(req,res)=>{
-    const users=await User.find({ isAdmin: { $ne: true } });
-    if (!users) {
-        throw new ApiError(404,"no users found");
-    }
-    return res.status(200).json(new ApiResponse(200,users,"users fetched successfully"));
-})
+    return res.status(200).json(new ApiResponse(200, null, "Admin logged out successfully"));
+});
 
-const getBooks=asyncHandler(async(req,res)=>{
-    const books=await Books.find().populate("category");
-    if (!books) {
-        throw new ApiError(404,"no books found");
-    }
-    return res.status(200).json(new ApiResponse(200,books,"books fetched successfully"));
-})
-
-export {addBook,getCategoryList,totalBooks,totalUsers,getCurrentAdmin,logout,getUsers,getBooks}
+export {
+    adminLogin, addBook, getCategoryList, totalBooks, totalUsers, totalTransactions,
+    getCurrentAdmin, getUsers, getUserById, updateUser, deleteUser, toggleUserStatus,
+    getBooks, getBookById, updateBook, deleteBook,
+    getRecentTransactions, getAllTransactions,
+    addCategory, deleteCategory,
+    logout
+};

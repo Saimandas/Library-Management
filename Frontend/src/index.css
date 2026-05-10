@@ -1,1 +1,51 @@
 @import "tailwindcss";
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.css-1nm33q7-singleValue {
+  color: #374151;
+}
+
+.css-13cymwt-control {
+  border-color: #d1d5db !important;
+  border-radius: 0.75rem !important;
+  padding: 6px !important;
+  min-height: 48px !important;
+}
+
+.css-13cymwt-control:hover {
+  border-color: #d97706 !important;
+}
+
+.css-13cymwt-control:focus-within {
+  border-color: #d97706 !important;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2) !important;
+}
+
+.css-qb0j73-placeholder {
+  color: #9ca3af !important;
+}
+
+.css-1dimb5e-singleValue {
+  color: #374151 !important;
+}

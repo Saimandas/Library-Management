@@ -41,6 +41,9 @@ const checkIsAdmin=asyncHandler(async(req,res,next)=>{
     if (!user || user.isAdmin===false) {
         throw new ApiError(403,"Only admin can access this route");
     }
+    if (user.isActive === false) {
+        throw new ApiError(403,"Admin account is suspended");
+    }
     req.admin=user;
     next();
      return;
