@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { useNavigate } from "react-router-dom";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import PdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker";
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+pdfjs.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 export default function PdfViewer({ pdfData, title }) {
   const [numPages, setNumPages] = useState(null);
@@ -13,6 +13,7 @@ export default function PdfViewer({ pdfData, title }) {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
   const containerRef = useRef(null);
+  const file = useMemo(() => ({ data: pdfData }), [pdfData]);
 
   const onDocumentLoadSuccess = useCallback(({ numPages }) => {
     setNumPages(numPages);
@@ -117,7 +118,7 @@ export default function PdfViewer({ pdfData, title }) {
           </div>
         )}
         <Document
-          file={pdfData}
+          file={file}
           onLoadSuccess={onDocumentLoadSuccess}
           onLoadError={onDocumentLoadError}
           loading=""

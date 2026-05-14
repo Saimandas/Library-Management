@@ -181,17 +181,11 @@ const readBook = asyncHandler(async (req, res) => {
         throw new ApiError(404, "PDF file not found on server");
     }
 
-    const stat = fs.statSync(pdfPath);
-
-    res.writeHead(200, {
-        "Content-Type": "application/pdf",
-        "Content-Length": stat.size,
-        "Content-Disposition": "inline",
-        "Accept-Ranges": "bytes"
-    });
-
-    const readStream = fs.createReadStream(pdfPath);
-    readStream.pipe(res);
+    const fileBuffer = fs.readFileSync(pdfPath);
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Length", fileBuffer.length);
+    res.set("Content-Disposition", "inline");
+    res.status(200).send(fileBuffer);
 });
 
 const downloadBook = asyncHandler(async (req, res) => {
@@ -216,16 +210,7 @@ const downloadBook = asyncHandler(async (req, res) => {
     await Downloads.create({ userId, bookId: id });
 
     const filename = `${book.title.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
-    const stat = fs.statSync(pdfPath);
-
-    res.writeHead(200, {
-        "Content-Type": "application/pdf",
-        "Content-Length": stat.size,
-        "Content-Disposition": `attachment; filename="${filename}"`
-    });
-
-    const readStream = fs.createReadStream(pdfPath);
-    readStream.pipe(res);
+    res.download(pdfPath, filename);
 });
 
 const forgotPassword = asyncHandler(async (req, res) => {
