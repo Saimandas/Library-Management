@@ -1,14 +1,17 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { clearUser } from "../redux/authSlice";
 import { logoutUser } from "../services/readerService";
 import { showToast } from "./Toast";
 import { useNavigate } from "react-router-dom";
+import Modal from "./Modal";
 
 const Navbar = () => {
   const { isAuthenticated, user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const [showLogout, setShowLogout] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -26,7 +29,7 @@ const Navbar = () => {
     <div className="h-20 bg-green-50 border-b border-green-200 flex items-center justify-between px-10 md:px-24 shadow-sm">
       
       <NavLink to="/" className="text-2xl font-bold text-emerald-800">
-        Book-Flow
+        Book Flow
       </NavLink>
 
       <div className="flex items-center gap-6 text-emerald-800 font-medium">
@@ -58,7 +61,7 @@ const Navbar = () => {
               Profile
             </NavLink>
             <button
-              onClick={handleLogout}
+              onClick={() => setShowLogout(true)}
               className="bg-emerald-600 hover:bg-emerald-700 transition px-5 py-2 rounded-lg text-white font-semibold shadow"
             >
               Logout
@@ -76,6 +79,24 @@ const Navbar = () => {
           </>
         )}
       </div>
+
+      <Modal isOpen={showLogout} onClose={() => setShowLogout(false)} title="Confirm Logout" size="sm">
+        <p className="text-gray-600 mb-4">Are you sure you want to logout?</p>
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={() => setShowLogout(false)}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Logout
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };

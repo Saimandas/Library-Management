@@ -69,7 +69,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-800">Create Account</h1>
-          <p className="text-gray-500 text-sm mt-1">Join Book-Flow E-Library</p>
+          <p className="text-gray-500 text-sm mt-1">Join Book Flow E-Library</p>
         </div>
 
         {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>}

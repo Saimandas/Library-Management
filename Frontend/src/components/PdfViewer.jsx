@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { useNavigate } from "react-router-dom";
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-export default function PdfViewer({ pdfUrl, title }) {
+export default function PdfViewer({ pdfData, title }) {
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1);
@@ -116,7 +117,7 @@ export default function PdfViewer({ pdfUrl, title }) {
           </div>
         )}
         <Document
-          file={pdfUrl}
+          file={pdfData}
           onLoadSuccess={onDocumentLoadSuccess}
           onLoadError={onDocumentLoadError}
           loading=""

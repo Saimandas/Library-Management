@@ -24,7 +24,7 @@ const AdminNavbar = () => {
     <div className="w-full bg-white border-b shadow-sm px-6 md:px-10 py-4 flex justify-between items-center">
       
       <h1 className="text-xl md:text-2xl font-bold text-emerald-800">
-        Book-Flow
+        Book Flow
       </h1>
 
       <div className="hidden md:flex items-center gap-6 text-emerald-700 font-medium">
