@@ -62,8 +62,8 @@ export default function BookDetail() {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <Skeleton className="h-8 w-64 mb-6" />
-        <div className="flex gap-8">
-          <Skeleton className="w-64 h-80 rounded-xl" />
+        <div className="flex flex-col md:flex-row gap-8">
+          <Skeleton className="w-full md:w-64 h-80 rounded-xl" />
           <div className="flex-1 space-y-3">
             <Skeleton className="h-6 w-full" />
             <Skeleton className="h-4 w-3/4" />
