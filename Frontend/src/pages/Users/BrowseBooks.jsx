@@ -1,88 +1,84 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useState, useEffect, useCallback } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { getAllBooks } from "../../services/readerService";
-import { getCategories } from "../../services/adminService";
+import api from "../../services/readerService";
 import Pagination from "../../components/Pagination";
-import { BookCardSkeleton } from "../../components/Skeleton";
+import BookCardSkeleton from "../../components/Skeleton";
 import EmptyState from "../../components/EmptyState";
 
 export default function BrowseBooks() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [books, setBooks] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const { isAuthenticated } = useSelector((state) => state.auth);
 
-  useEffect(() => {
-    fetchCategories();
-  }, []);
+  const page = parseInt(searchParams.get("page")) || 1;
+  const search = searchParams.get("search") || "";
+  const category = searchParams.get("category") || "";
 
-  useEffect(() => {
-    fetchBooks();
-  }, [currentPage, selectedCategory, search]);
-
-  const fetchCategories = async () => {
-    try {
-      const data = await getCategories();
-      setCategories(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchBooks = async () => {
+  const fetchBooks = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page: currentPage, limit: 12 };
+      const params = { page, limit: 12 };
       if (search) params.search = search;
-      if (selectedCategory) params.category = selectedCategory;
-      const data = await getAllBooks(params);
-      setBooks(data.data.books);
-      setTotalPages(data.data.pages);
+      if (category) params.category = category;
+      const res = await getAllBooks(params);
+      setBooks(res.data?.books || []);
+      setTotal(res.data?.total || 0);
+      setPages(res.data?.pages || 1);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, search, category]);
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setCurrentPage(1);
+  useEffect(() => {
     fetchBooks();
+  }, [fetchBooks]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get("/admin/categories");
+        setCategories(res.data?.data || []);
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, []);
+
+  const updateParams = (updates) => {
+    const params = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    });
+    if (updates.search !== undefined || updates.category !== undefined) {
+      params.delete("page");
+    }
+    setSearchParams(params);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">Browse Books</h1>
-          
-          <div className="flex flex-col md:flex-row gap-4">
-            <form onSubmit={handleSearch} className="flex-1 flex gap-2">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by title or author..."
-                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-              />
-              <button
-                type="submit"
-                className="px-6 py-3 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700"
-              >
-                Search
-              </button>
-            </form>
-            
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">Browse Books</h1>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              placeholder="Search by title or author..."
+              value={search}
+              onChange={(e) => updateParams({ search: e.target.value })}
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+            />
             <select
-              value={selectedCategory}
-              onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
-              className="px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none min-w-48"
+              value={category}
+              onChange={(e) => updateParams({ category: e.target.value })}
+              className="px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
             >
               <option value="">All Categories</option>
               {categories.map((cat) => (
@@ -91,50 +87,65 @@ export default function BrowseBooks() {
             </select>
           </div>
         </div>
+      </div>
 
+      <div className="max-w-7xl mx-auto px-4 py-6">
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {Array.from({ length: 8 }).map((_, i) => <BookCardSkeleton key={i} />)}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <BookCardSkeleton key={i} />
+            ))}
           </div>
         ) : books.length === 0 ? (
           <EmptyState
-            icon="📚"
+            icon={
+              <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            }
             title="No books found"
-            description={search || selectedCategory ? "Try adjusting your search or filters" : "No books available yet"}
-            action={search || selectedCategory ? { label: "Clear Filters", onClick: () => { setSearch(""); setSelectedCategory(""); } } : null}
+            description={search ? "Try a different search term" : "No books in this category yet"}
           />
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <p className="text-sm text-gray-500 mb-4">{total} book{total !== 1 ? "s" : ""} found</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {books.map((book) => (
                 <Link
                   key={book._id}
                   to={`/books/${book._id}`}
-                  className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition group"
+                  className="bg-white rounded-xl shadow-sm hover:shadow-md transition border border-gray-100 overflow-hidden group"
                 >
-                  <div className="h-48 bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center">
+                  <div className="h-48 bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center">
                     {book.coverImage ? (
-                      <img src={book.coverImage} alt={book.title} className="h-full w-full object-cover" />
+                      <img src={book.coverImage} alt={book.title} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-white text-6xl font-bold opacity-30">{book.title[0]}</span>
+                      <svg className="w-16 h-16 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
                     )}
                   </div>
                   <div className="p-4">
-                    <h3 className="font-semibold text-gray-900 group-hover:text-emerald-600 transition line-clamp-2">{book.title}</h3>
-                    <p className="text-gray-500 text-sm mt-1">{book.author}</p>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
-                        {book.category?.name || "Uncategorized"}
+                    <p className="font-semibold text-gray-800 truncate group-hover:text-emerald-600 transition">{book.title}</p>
+                    <p className="text-sm text-gray-500 truncate">{book.author}</p>
+                    {book.category && (
+                      <span className="inline-block mt-2 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-full">
+                        {book.category.name}
                       </span>
-                      <span className={`text-sm font-medium ${book.availableCopies > 0 ? "text-green-600" : "text-red-500"}`}>
-                        {book.availableCopies > 0 ? `${book.availableCopies} available` : "Not available"}
-                      </span>
+                    )}
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md font-medium">Read Online</span>
+                      {book.pdfFile && <span className="text-xs text-gray-400">PDF</span>}
                     </div>
                   </div>
                 </Link>
               ))}
             </div>
-            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+            {pages > 1 && (
+              <div className="mt-8 flex justify-center">
+                <Pagination currentPage={page} totalPages={pages} onPageChange={(p) => updateParams({ page: p.toString() })} />
+              </div>
+            )}
           </>
         )}
       </div>

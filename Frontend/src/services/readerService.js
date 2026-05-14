@@ -41,42 +41,6 @@ export const logoutUser = async () => {
   }
 };
 
-export const borrowBook = async (bookId) => {
-  try {
-    const res = await api.post("/readers/borrow-book", { bookId });
-    return res.data;
-  } catch (error) {
-    throw error.response?.data?.message || error.message;
-  }
-};
-
-export const returnBook = async (transactionId) => {
-  try {
-    const res = await api.post("/readers/return-book", { transactionId });
-    return res.data;
-  } catch (error) {
-    throw error.response?.data?.message || error.message;
-  }
-};
-
-export const getMyTransactions = async () => {
-  try {
-    const res = await api.get("/readers/my-transactions");
-    return res.data;
-  } catch (error) {
-    throw error.response?.data?.message || error.message;
-  }
-};
-
-export const getMyBorrows = async () => {
-  try {
-    const res = await api.get("/readers/my-borrows");
-    return res.data;
-  } catch (error) {
-    throw error.response?.data?.message || error.message;
-  }
-};
-
 export const getAllBooks = async (params = {}) => {
   try {
     const res = await api.get("/readers/books", { params });
@@ -89,6 +53,33 @@ export const getAllBooks = async (params = {}) => {
 export const getBookById = async (id) => {
   try {
     const res = await api.get(`/readers/books/${id}`);
+    return res.data;
+  } catch (error) {
+    throw error.response?.data?.message || error.message;
+  }
+};
+
+export const getMyDownloads = async () => {
+  try {
+    const res = await api.get("/readers/my-downloads");
+    return res.data;
+  } catch (error) {
+    throw error.response?.data?.message || error.message;
+  }
+};
+
+export const forgotPassword = async (email) => {
+  try {
+    const res = await api.post("/readers/forgot-password", { email });
+    return res.data;
+  } catch (error) {
+    throw error.response?.data?.message || error.message;
+  }
+};
+
+export const resetPassword = async (token, password) => {
+  try {
+    const res = await api.post(`/readers/reset-password/${token}`, { password });
     return res.data;
   } catch (error) {
     throw error.response?.data?.message || error.message;

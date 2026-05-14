@@ -30,6 +30,9 @@ const Navbar = () => {
       </NavLink>
 
       <div className="flex items-center gap-6 text-emerald-800 font-medium">
+        <NavLink to="/books" className="hover:text-emerald-600 transition">
+          Browse
+        </NavLink>
         {!isAuthenticated ? (
           <>
             <NavLink to="/admin/login" className="hover:text-emerald-600 transition">
@@ -51,12 +54,6 @@ const Navbar = () => {
           </>
         ) : (
           <>
-            <NavLink to="/books" className="hover:text-emerald-600 transition">
-              Browse
-            </NavLink>
-            <NavLink to="/my-books" className="hover:text-emerald-600 transition">
-              My Books
-            </NavLink>
             <NavLink to="/profile" className="hover:text-emerald-600 transition">
               Profile
             </NavLink>

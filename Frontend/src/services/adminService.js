@@ -47,7 +47,9 @@ export const getBookById = async (id) => {
 
 export const addBook = async (bookData) => {
   try {
-    const res = await api.post("/admin/add-book", bookData);
+    const res = await api.post("/admin/add-book", bookData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
     return res.data;
   } catch (error) {
     throw error.response?.data?.message || error.message;
@@ -56,7 +58,9 @@ export const addBook = async (bookData) => {
 
 export const updateBook = async (id, bookData) => {
   try {
-    const res = await api.put(`/admin/books/${id}`, bookData);
+    const res = await api.put(`/admin/books/${id}`, bookData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
     return res.data;
   } catch (error) {
     throw error.response?.data?.message || error.message;
@@ -144,35 +148,63 @@ export const toggleUserStatus = async (id) => {
   }
 };
 
-export const getStats = async () => {
+export const getPendingUsers = async () => {
   try {
-    const [books, users, transactions] = await Promise.all([
-      api.get("/admin/total-books"),
-      api.get("/admin/total-users"),
-      api.get("/admin/total-transactions"),
-    ]);
-    return {
-      totalBooks: books.data.data,
-      totalUsers: users.data.data,
-      totalTransactions: transactions.data.data,
-    };
-  } catch (error) {
-    throw error.response?.data?.message || error.message;
-  }
-};
-
-export const getRecentTransactions = async (limit = 10) => {
-  try {
-    const res = await api.get("/admin/recent-transactions", { params: { limit } });
+    const res = await api.get("/admin/users/pending");
     return res.data;
   } catch (error) {
     throw error.response?.data?.message || error.message;
   }
 };
 
-export const getAllTransactions = async (params = {}) => {
+export const approveUser = async (id, approved) => {
   try {
-    const res = await api.get("/admin/transactions", { params });
+    const res = await api.put(`/admin/users/${id}/approve`, { approved });
+    return res.data;
+  } catch (error) {
+    throw error.response?.data?.message || error.message;
+  }
+};
+
+export const getStats = async () => {
+  try {
+    const res = await api.get("/admin/stats");
+    return res.data;
+  } catch (error) {
+    throw error.response?.data?.message || error.message;
+  }
+};
+
+export const getRecentDownloads = async (limit = 10) => {
+  try {
+    const res = await api.get("/admin/downloads/recent", { params: { limit } });
+    return res.data;
+  } catch (error) {
+    throw error.response?.data?.message || error.message;
+  }
+};
+
+export const getAllDownloads = async (params = {}) => {
+  try {
+    const res = await api.get("/admin/downloads", { params });
+    return res.data;
+  } catch (error) {
+    throw error.response?.data?.message || error.message;
+  }
+};
+
+export const adminForgotPassword = async (email) => {
+  try {
+    const res = await api.post("/admin/forgot-password", { email });
+    return res.data;
+  } catch (error) {
+    throw error.response?.data?.message || error.message;
+  }
+};
+
+export const adminResetPassword = async (token, password) => {
+  try {
+    const res = await api.post(`/admin/reset-password/${token}`, { password });
     return res.data;
   } catch (error) {
     throw error.response?.data?.message || error.message;

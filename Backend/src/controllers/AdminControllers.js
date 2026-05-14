@@ -1,12 +1,20 @@
 import Books from "../models/booksModel.js";
 import Category from "../models/categoryModel.js";
-import Transactions from "../models/TransactionsModel.js";
+import Downloads from "../models/downloadsModel.js";
 import User from "../models/userModel.js";
 import { ApiError } from "../utils/apiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/tokensGenerator.js";
+import { sendEmail } from "../utils/nodemailer.js";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const adminLogin = asyncHandler(async (req, res) => {
     const { email, password } = req.body;
@@ -54,33 +62,26 @@ const adminLogin = asyncHandler(async (req, res) => {
 
 const addBook = asyncHandler(async (req, res) => {
     const {
-        title, author, category, totalCopies, edition, isbn, publishedYear, publisher, coverImage, description
+        title, author, category, edition, isbn, publishedYear, publisher, coverImage, description, pages
     } = req.body;
 
     if (!title) throw new ApiError(400, "Title is required");
     if (!author) throw new ApiError(400, "Author is required");
     if (!category) throw new ApiError(400, "Category is required");
-    if (!totalCopies) throw new ApiError(400, "Total copies required");
     if (!edition) throw new ApiError(400, "Edition is required");
-    if (!isbn) throw new ApiError(400, "ISBN is required");
     if (!publishedYear) throw new ApiError(400, "Published year required");
     if (!publisher) throw new ApiError(400, "Publisher is required");
 
-    const newBook = await Books.create({
-        title,
-        author,
-        totalCopies,
-        availableCopies: totalCopies,
-        edition,
-        isbn,
-        publishedYear,
-        publisher,
-        coverImage,
-        description
+    const newBook = new Books({
+        title, author, edition, isbn, publishedYear, publisher, coverImage, description, pages
     });
 
-    const existingCategory = await Category.findOne({ name: category });
+    if (req.file) {
+        newBook.pdfFile = req.file.filename;
+        newBook.fileSize = req.file.size;
+    }
 
+    const existingCategory = await Category.findOne({ name: category });
     if (!existingCategory) {
         const newCategory = await Category.create({ name: category });
         newBook.category = newCategory._id;
@@ -89,7 +90,6 @@ const addBook = asyncHandler(async (req, res) => {
     }
 
     const savedBook = await newBook.save();
-
     if (!savedBook) {
         throw new ApiError(500, "Failed to add book");
     }
@@ -99,27 +99,79 @@ const addBook = asyncHandler(async (req, res) => {
     return res.status(201).json(new ApiResponse(201, populatedBook, "Book added successfully"));
 });
 
+const updateBook = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const {
+        title, author, category, edition, isbn, publishedYear, publisher, coverImage, description, pages
+    } = req.body;
+
+    const book = await Books.findById(id);
+    if (!book) {
+        throw new ApiError(404, "Book not found");
+    }
+
+    if (title) book.title = title;
+    if (author) book.author = author;
+    if (edition) book.edition = edition;
+    if (isbn) book.isbn = isbn;
+    if (publishedYear) book.publishedYear = publishedYear;
+    if (publisher) book.publisher = publisher;
+    if (coverImage) book.coverImage = coverImage;
+    if (description) book.description = description;
+    if (pages) book.pages = pages;
+
+    if (req.file) {
+        if (book.pdfFile) {
+            const oldPdfPath = path.join(__dirname, '..', '..', 'uploads', 'pdfs', book.pdfFile);
+            if (fs.existsSync(oldPdfPath)) {
+                fs.unlinkSync(oldPdfPath);
+            }
+        }
+        book.pdfFile = req.file.filename;
+        book.fileSize = req.file.size;
+    }
+
+    if (category) {
+        const existingCategory = await Category.findOne({ name: category });
+        if (!existingCategory) {
+            const newCategory = await Category.create({ name: category });
+            book.category = newCategory._id;
+        } else {
+            book.category = existingCategory._id;
+        }
+    }
+
+    await book.save();
+
+    const updatedBook = await Books.findById(id).populate("category", "name");
+    return res.status(200).json(new ApiResponse(200, updatedBook, "Book updated successfully"));
+});
+
+const deleteBook = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const book = await Books.findById(id);
+    if (!book) {
+        throw new ApiError(404, "Book not found");
+    }
+
+    if (book.pdfFile) {
+        const pdfPath = path.join(__dirname, '..', '..', 'uploads', 'pdfs', book.pdfFile);
+        if (fs.existsSync(pdfPath)) {
+            fs.unlinkSync(pdfPath);
+        }
+    }
+
+    await Books.findByIdAndDelete(id);
+    return res.status(200).json(new ApiResponse(200, null, "Book deleted successfully"));
+});
+
 const getCategoryList = asyncHandler(async (req, res) => {
     const categories = await Category.find().sort({ name: 1 });
     if (!categories) {
         throw new ApiError(404, "No categories found");
     }
     return res.status(200).json(new ApiResponse(200, categories, "Categories fetched successfully"));
-});
-
-const totalBooks = asyncHandler(async (req, res) => {
-    const total = await Books.countDocuments();
-    return res.status(200).json(new ApiResponse(200, total, "Total books fetched"));
-});
-
-const totalUsers = asyncHandler(async (req, res) => {
-    const total = await User.countDocuments({ isAdmin: { $ne: true } });
-    return res.status(200).json(new ApiResponse(200, total, "Total users fetched"));
-});
-
-const totalTransactions = asyncHandler(async (req, res) => {
-    const total = await Transactions.countDocuments();
-    return res.status(200).json(new ApiResponse(200, total, "Total transactions fetched"));
 });
 
 const getCurrentAdmin = asyncHandler(async (req, res) => {
@@ -165,11 +217,11 @@ const getUserById = asyncHandler(async (req, res) => {
         throw new ApiError(404, "User not found");
     }
 
-    const transactions = await Transactions.find({ userId: id })
+    const downloads = await Downloads.find({ userId: id })
         .populate("bookId", "title author")
-        .sort({ issuedDate: -1 });
+        .sort({ downloadedAt: -1 });
 
-    return res.status(200).json(new ApiResponse(200, { user, transactions }, "User fetched successfully"));
+    return res.status(200).json(new ApiResponse(200, { user, downloads }, "User fetched successfully"));
 });
 
 const updateUser = asyncHandler(async (req, res) => {
@@ -259,101 +311,6 @@ const getBookById = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, book, "Book fetched successfully"));
 });
 
-const updateBook = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const {
-        title, author, category, totalCopies, edition, isbn, publishedYear, publisher, coverImage, description
-    } = req.body;
-
-    const book = await Books.findById(id);
-    if (!book) {
-        throw new ApiError(404, "Book not found");
-    }
-
-    const oldTotalCopies = book.totalCopies;
-    const oldAvailableCopies = book.availableCopies;
-
-    if (title) book.title = title;
-    if (author) book.author = author;
-    if (edition) book.edition = edition;
-    if (isbn) book.isbn = isbn;
-    if (publishedYear) book.publishedYear = publishedYear;
-    if (publisher) book.publisher = publisher;
-    if (coverImage) book.coverImage = coverImage;
-    if (description) book.description = description;
-    if (totalCopies) book.totalCopies = totalCopies;
-
-    if (totalCopies && totalCopies !== oldTotalCopies) {
-        const borrowedCopies = oldTotalCopies - oldAvailableCopies;
-        book.availableCopies = totalCopies - borrowedCopies;
-    }
-
-    if (category) {
-        const existingCategory = await Category.findOne({ name: category });
-        if (!existingCategory) {
-            const newCategory = await Category.create({ name: category });
-            book.category = newCategory._id;
-        } else {
-            book.category = existingCategory._id;
-        }
-    }
-
-    await book.save();
-
-    const updatedBook = await Books.findById(id).populate("category", "name");
-    return res.status(200).json(new ApiResponse(200, updatedBook, "Book updated successfully"));
-});
-
-const deleteBook = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-
-    const book = await Books.findById(id);
-    if (!book) {
-        throw new ApiError(404, "Book not found");
-    }
-
-    const activeBorrows = await Transactions.countDocuments({
-        bookId: id,
-        transactionType: "borrow",
-        returnDate: null
-    });
-
-    if (activeBorrows > 0) {
-        throw new ApiError(400, "Cannot delete book with active borrows");
-    }
-
-    await Books.findByIdAndDelete(id);
-    return res.status(200).json(new ApiResponse(200, null, "Book deleted successfully"));
-});
-
-const getRecentTransactions = asyncHandler(async (req, res) => {
-    const { limit = 10 } = req.query;
-
-    const transactions = await Transactions.find()
-        .populate("userId", "username email")
-        .populate("bookId", "title author")
-        .sort({ issuedDate: -1 })
-        .limit(parseInt(limit));
-
-    return res.status(200).json(new ApiResponse(200, transactions, "Recent transactions fetched"));
-});
-
-const getAllTransactions = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (page - 1) * limit;
-
-    const transactions = await Transactions.find()
-        .populate("userId", "username email")
-        .populate("bookId", "title author")
-        .sort({ issuedDate: -1 })
-        .skip(skip)
-        .limit(parseInt(limit));
-
-    const total = await Transactions.countDocuments();
-
-    return res.status(200).json(new ApiResponse(200, { transactions, total, page: parseInt(page), pages: Math.ceil(total / limit) }, "Transactions fetched"));
-});
-
 const addCategory = asyncHandler(async (req, res) => {
     const { name } = req.body;
 
@@ -401,11 +358,149 @@ const logout = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, null, "Admin logged out successfully"));
 });
 
+const getPendingUsers = asyncHandler(async (req, res) => {
+    const pending = await User.find({ isAdmin: { $ne: true }, isApproved: false })
+        .select("-password -refreshToken")
+        .sort({ createdAt: -1 });
+
+    return res.status(200).json(new ApiResponse(200, pending, "Pending users fetched"));
+});
+
+const approveUser = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { approved } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    if (approved) {
+        user.isApproved = true;
+        user.approvalDate = new Date();
+        user.isActive = true;
+    }
+
+    await user.save();
+
+    const status = approved ? "approved" : "rejected";
+
+    await sendEmail({
+        to: user.email,
+        subject: `Account ${status}`,
+        text: `Your account has been ${status}. You can now login.`,
+        html: `<p>Your account has been <strong>${status}</strong>. You can now login.</p>`
+    });
+
+    return res.status(200).json(new ApiResponse(200, user, `User ${status} successfully`));
+});
+
+const getDashboardStats = asyncHandler(async (req, res) => {
+    const totalBooks = await Books.countDocuments();
+    const totalUsers = await User.countDocuments({ isAdmin: { $ne: true } });
+    const totalDownloads = await Downloads.countDocuments();
+    const pendingApprovals = await User.countDocuments({ isAdmin: { $ne: true }, isApproved: false });
+
+    return res.status(200).json(new ApiResponse(200, {
+        totalBooks, totalUsers, totalDownloads, pendingApprovals
+    }, "Stats fetched"));
+});
+
+const getRecentDownloads = asyncHandler(async (req, res) => {
+    const { limit = 10 } = req.query;
+
+    const downloads = await Downloads.find()
+        .populate("userId", "username email firstName lastName")
+        .populate("bookId", "title author")
+        .sort({ downloadedAt: -1 })
+        .limit(parseInt(limit));
+
+    return res.status(200).json(new ApiResponse(200, downloads, "Recent downloads fetched"));
+});
+
+const getAllDownloads = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 20 } = req.query;
+    const skip = (page - 1) * limit;
+
+    const downloads = await Downloads.find()
+        .populate("userId", "username email")
+        .populate("bookId", "title author")
+        .sort({ downloadedAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+    const total = await Downloads.countDocuments();
+
+    return res.status(200).json(new ApiResponse(200, { downloads, total, page: parseInt(page), pages: Math.ceil(total / limit) }, "Downloads fetched"));
+});
+
+const forgotPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        throw new ApiError(400, "Email is required");
+    }
+
+    const admin = await User.findOne({ email, isAdmin: true });
+    if (!admin) {
+        return res.status(200).json(new ApiResponse(200, null, "If the email exists, a reset link has been sent"));
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+    admin.resetPasswordToken = hashedToken;
+    admin.resetPasswordExpires = Date.now() + 3600000;
+    await admin.save({ validateBeforeSave: false });
+
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+
+    await sendEmail({
+        to: admin.email,
+        subject: "Admin Password Reset Request",
+        text: `You requested a password reset. Use this link: ${resetUrl}. Expires in 1 hour.`,
+        html: `<p>You requested a password reset.</p><p>Click <a href="${resetUrl}">here</a> to reset your password. Expires in 1 hour.</p>`
+    });
+
+    return res.status(200).json(new ApiResponse(200, null, "If the email exists, a reset link has been sent"));
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    if (!password) {
+        throw new ApiError(400, "Password is required");
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    const admin = await User.findOne({
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: { $gt: Date.now() },
+        isAdmin: true
+    });
+
+    if (!admin) {
+        throw new ApiError(400, "Invalid or expired reset token");
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    admin.password = await bcrypt.hash(password, salt);
+    admin.resetPasswordToken = undefined;
+    admin.resetPasswordExpires = undefined;
+    await admin.save();
+
+    return res.status(200).json(new ApiResponse(200, null, "Password reset successfully"));
+});
+
 export {
-    adminLogin, addBook, getCategoryList, totalBooks, totalUsers, totalTransactions,
-    getCurrentAdmin, getUsers, getUserById, updateUser, deleteUser, toggleUserStatus,
-    getBooks, getBookById, updateBook, deleteBook,
-    getRecentTransactions, getAllTransactions,
+    adminLogin, addBook, updateBook, deleteBook,
+    getCategoryList, getCurrentAdmin,
+    getUsers, getUserById, updateUser, deleteUser, toggleUserStatus,
+    getBooks, getBookById,
     addCategory, deleteCategory,
-    logout
+    logout, getPendingUsers, approveUser, getDashboardStats,
+    getRecentDownloads, getAllDownloads,
+    forgotPassword, resetPassword
 };

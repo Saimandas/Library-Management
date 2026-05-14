@@ -1,74 +1,60 @@
 import { useState, useEffect } from "react";
-import { useDispatch } from "react-redux";
+import { useNavigate } from "react-router-dom";
+import CreatableSelect from "react-select/creatable";
 import { addBook, getCategories, addCategory } from "../../services/adminService";
 import { showToast } from "../../components/Toast";
-import CreatableSelect from "react-select/creatable";
+import { useDispatch } from "react-redux";
 
 export default function AddBook() {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
-  const [formData, setFormData] = useState({
-    title: "", author: "", edition: "", isbn: "", publishedYear: "", publisher: "", totalCopies: "", coverImage: "", description: ""
-  });
-  const [category, setCategory] = useState(null);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [pdfFile, setPdfFile] = useState(null);
+  const [form, setForm] = useState({
+    title: "", author: "", category: null, edition: "", isbn: "",
+    publishedYear: "", publisher: "", coverImage: "", description: "", pages: ""
+  });
 
   useEffect(() => {
-    fetchCategories();
-  }, []);
+    (async () => {
+      try {
+        const res = await getCategories();
+        setCategories((res.data || []).map((c) => ({ value: c._id, label: c.name })));
+      } catch (err) {
+        showToast(dispatch, "error", "Failed to load categories");
+      }
+    })();
+  }, [dispatch]);
 
-  const fetchCategories = async () => {
-    try {
-      const data = await getCategories();
-      setCategories(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const validate = () => {
-    const newErrors = {};
-    if (!formData.title) newErrors.title = "Title is required";
-    if (!formData.author) newErrors.author = "Author is required";
-    if (!formData.edition) newErrors.edition = "Edition is required";
-    if (!formData.isbn) newErrors.isbn = "ISBN is required";
-    if (!formData.publishedYear) newErrors.publishedYear = "Published year is required";
-    if (!formData.publisher) newErrors.publisher = "Publisher is required";
-    if (!formData.totalCopies || parseInt(formData.totalCopies) < 1) newErrors.totalCopies = "Total copies must be at least 1";
-    if (!category) newErrors.category = "Category is required";
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleChange = (field, value) => {
-    setFormData({ ...formData, [field]: value });
-  };
-
-  const handleCategoryChange = (selectedOption) => {
-    setCategory(selectedOption);
-  };
-
-  const handleCreateCategory = async (inputValue) => {
-    try {
-      const data = await addCategory(inputValue);
-      setCategories([...categories, data.data]);
-      setCategory({ label: inputValue, value: data.data._id });
-      showToast(dispatch, "success", "Category created!");
-    } catch (err) {
-      showToast(dispatch, "error", "Failed to create category");
-    }
-  };
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+
+    if (!form.title || !form.author || !form.category || !form.edition || !form.publishedYear || !form.publisher) {
+      showToast(dispatch, "error", "Please fill in all required fields");
+      return;
+    }
+
     setLoading(true);
     try {
-      await addBook({ ...formData, totalCopies: parseInt(formData.totalCopies), category: category?.label });
+      const formData = new FormData();
+      formData.append("title", form.title);
+      formData.append("author", form.author);
+      formData.append("category", form.category.label);
+      formData.append("edition", form.edition);
+      if (form.isbn) formData.append("isbn", form.isbn);
+      formData.append("publishedYear", form.publishedYear);
+      formData.append("publisher", form.publisher);
+      if (form.coverImage) formData.append("coverImage", form.coverImage);
+      if (form.description) formData.append("description", form.description);
+      if (form.pages) formData.append("pages", form.pages);
+      if (pdfFile) formData.append("pdfFile", pdfFile);
+
+      await addBook(formData);
       showToast(dispatch, "success", "Book added successfully!");
-      setFormData({ title: "", author: "", edition: "", isbn: "", publishedYear: "", publisher: "", totalCopies: "", coverImage: "", description: "" });
-      setCategory(null);
+      navigate("/admin/books");
     } catch (err) {
       showToast(dispatch, "error", err);
     } finally {
@@ -76,127 +62,94 @@ export default function AddBook() {
     }
   };
 
-  const handleClear = () => {
-    setFormData({ title: "", author: "", edition: "", isbn: "", publishedYear: "", publisher: "", totalCopies: "", coverImage: "", description: "" });
-    setCategory(null);
-  };
-
-  const categoryOptions = categories.map((c) => ({ label: c.name, value: c._id }));
-
   return (
-    <div className="min-h-screen bg-gray-100 p-6 md:p-10">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Add New Book</h1>
-          <p className="text-gray-500 mt-1">Fill the details to add a book to the library</p>
+    <div className="p-6 max-w-3xl mx-auto">
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">Add New Book</h1>
+
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+            <input name="title" value={form.title} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Author *</label>
+            <input name="author" value={form.author} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+            <CreatableSelect
+              isClearable
+              placeholder="Select or create..."
+              options={categories}
+              value={form.category}
+              onChange={(val) => setForm({ ...form, category: val })}
+              onCreateOption={async (inputValue) => {
+                try {
+                  const res = await addCategory(inputValue);
+                  const newOption = { value: res.data._id, label: res.data.name };
+                  setCategories([...categories, newOption]);
+                  setForm({ ...form, category: newOption });
+                  showToast(dispatch, "success", "Category created");
+                } catch (err) {
+                  showToast(dispatch, "error", err);
+                }
+              }}
+              className="[&_.css-13cymwt-control]:border-gray-300 [&_.css-13cymwt-control]:hover:border-gray-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Edition *</label>
+            <input name="edition" value={form.edition} onChange={handleChange} placeholder="e.g., 1st Edition" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">ISBN</label>
+            <input name="isbn" value={form.isbn} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Published Year *</label>
+            <input type="number" name="publishedYear" value={form.publishedYear} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Publisher *</label>
+            <input name="publisher" value={form.publisher} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pages</label>
+            <input type="number" name="pages" value={form.pages} onChange={handleChange} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-6 md:p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Book Title *</label>
-              <input type="text" value={formData.title} onChange={(e) => handleChange("title", e.target.value)} placeholder="Enter book title"
-                className={`w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-amber-400 ${errors.title ? "border-red-500" : "border-gray-300"}`} />
-              {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Author *</label>
-              <input type="text" value={formData.author} onChange={(e) => handleChange("author", e.target.value)} placeholder="Enter author name"
-                className={`w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-amber-400 ${errors.author ? "border-red-500" : "border-gray-300"}`} />
-              {errors.author && <p className="text-red-500 text-sm mt-1">{errors.author}</p>}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Edition *</label>
-                <input type="text" value={formData.edition} onChange={(e) => handleChange("edition", e.target.value)} placeholder="e.g. 1st Edition"
-                  className={`w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-amber-400 ${errors.edition ? "border-red-500" : "border-gray-300"}`} />
-                {errors.edition && <p className="text-red-500 text-sm mt-1">{errors.edition}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">ISBN *</label>
-                <input type="text" value={formData.isbn} onChange={(e) => handleChange("isbn", e.target.value)} placeholder="Enter ISBN"
-                  className={`w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-amber-400 ${errors.isbn ? "border-red-500" : "border-gray-300"}`} />
-                {errors.isbn && <p className="text-red-500 text-sm mt-1">{errors.isbn}</p>}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Category *</label>
-              <div className="[&_.css-1u6t5l5-input]:!outline-none [&_.css-1u6t5l5-input]:!ring-0">
-              <CreatableSelect
-                isClearable
-                value={category}
-                options={categoryOptions}
-                onChange={handleCategoryChange}
-                onCreateOption={handleCreateCategory}
-                placeholder="Select or create category"
-                styles={{
-                  control: (base) => ({
-                    ...base,
-                    borderRadius: '0.75rem',
-                    borderColor: errors.category ? '#ef4444' : '#d1d5db',
-                    padding: '6px',
-                    minHeight: '48px',
-                    '&:hover': { borderColor: '#d97706' },
-                    '&:focus-within': { borderColor: '#d97706', boxShadow: '0 0 0 2px rgba(217, 119, 6, 0.2)' }
-                  }),
-                  placeholder: (base) => ({ ...base, color: '#9ca3af' }),
-                  input: (base) => ({ ...base, color: '#374151' })
-                }}
-              />
-            </div>
-              {errors.category && <p className="text-red-500 text-sm mt-1">{errors.category}</p>}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Total Copies *</label>
-                <input type="number" value={formData.totalCopies} onChange={(e) => handleChange("totalCopies", e.target.value)} placeholder="0" min="1"
-                  className={`w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-amber-400 ${errors.totalCopies ? "border-red-500" : "border-gray-300"}`} />
-                {errors.totalCopies && <p className="text-red-500 text-sm mt-1">{errors.totalCopies}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Published Year *</label>
-                <input type="number" value={formData.publishedYear} onChange={(e) => handleChange("publishedYear", e.target.value)} placeholder="e.g. 2020"
-                  className={`w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-amber-400 ${errors.publishedYear ? "border-red-500" : "border-gray-300"}`} />
-                {errors.publishedYear && <p className="text-red-500 text-sm mt-1">{errors.publishedYear}</p>}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Publisher *</label>
-              <input type="text" value={formData.publisher} onChange={(e) => handleChange("publisher", e.target.value)} placeholder="Enter publisher name"
-                className={`w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-amber-400 ${errors.publisher ? "border-red-500" : "border-gray-300"}`} />
-              {errors.publisher && <p className="text-red-500 text-sm mt-1">{errors.publisher}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Cover Image URL (optional)</label>
-              <input type="url" value={formData.coverImage} onChange={(e) => handleChange("coverImage", e.target.value)} placeholder="https://..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Description (optional)</label>
-              <textarea value={formData.description} onChange={(e) => handleChange("description", e.target.value)} placeholder="Book description..."
-                rows="3" className="w-full px-4 py-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 resize-none" />
-            </div>
-
-            <div className="flex gap-4 pt-4">
-              <button type="submit" disabled={loading}
-                className="flex-1 py-3 bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 disabled:bg-amber-300 transition">
-                {loading ? "Adding..." : "Add Book"}
-              </button>
-              <button type="button" onClick={handleClear}
-                className="flex-1 py-3 bg-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-300 transition">
-                Clear
-              </button>
-            </div>
-          </form>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image URL</label>
+          <input name="coverImage" value={form.coverImage} onChange={handleChange} placeholder="https://..." className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" />
         </div>
-      </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">PDF File</label>
+          <input
+            type="file"
+            accept=".pdf,application/pdf"
+            onChange={(e) => setPdfFile(e.target.files[0])}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-amber-50 file:text-amber-700 file:font-medium hover:file:bg-amber-100"
+          />
+          {pdfFile && <p className="text-xs text-gray-500 mt-1">Selected: {pdfFile.name} ({(pdfFile.size / 1048576).toFixed(1)} MB)</p>}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <textarea name="description" value={form.description} onChange={handleChange} rows={4} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none resize-none" />
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button type="submit" disabled={loading} className="px-6 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 font-medium">
+            {loading ? "Adding Book..." : "Add Book"}
+          </button>
+          <button type="button" onClick={() => navigate("/admin/books")} className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

@@ -1,11 +1,19 @@
 import Books from "../models/booksModel.js";
-import Transactions from "../models/TransactionsModel.js";
+import Downloads from "../models/downloadsModel.js";
 import User from "../models/userModel.js";
 import { ApiError } from "../utils/apiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/tokensGenerator.js";
+import { sendEmail } from "../utils/nodemailer.js";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const register = asyncHandler(async (req, res) => {
     const { username, email, password, firstName, lastName } = req.body;
@@ -14,7 +22,7 @@ const register = asyncHandler(async (req, res) => {
         throw new ApiError(400, "All fields are required");
     }
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
         throw new ApiError(400, "User already exists");
     }
@@ -27,10 +35,11 @@ const register = asyncHandler(async (req, res) => {
         email,
         password: hashedPassword,
         firstName,
-        lastName
+        lastName,
+        isApproved: false
     });
 
-    return res.status(201).json(new ApiResponse(201, user, "User registered successfully"));
+    return res.status(201).json(new ApiResponse(201, user, "Registration successful. Await admin approval."));
 });
 
 const login = asyncHandler(async (req, res) => {
@@ -47,6 +56,10 @@ const login = asyncHandler(async (req, res) => {
 
     if (existingUser.isAdmin) {
         throw new ApiError(403, "Admin users must login via admin portal");
+    }
+
+    if (!existingUser.isApproved) {
+        throw new ApiError(403, "Account pending admin approval");
     }
 
     const isMatch = await bcrypt.compare(password, existingUser.password);
@@ -89,107 +102,14 @@ const currentUser = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, user, "Current user fetched successfully"));
 });
 
-const borrowBook = asyncHandler(async (req, res) => {
-    const { bookId } = req.body;
+const getMyDownloads = asyncHandler(async (req, res) => {
     const userId = req.user._id;
 
-    if (!bookId) {
-        throw new ApiError(400, "Book ID is required");
-    }
+    const downloads = await Downloads.find({ userId })
+        .populate("bookId", "title author coverImage pdfFile")
+        .sort({ downloadedAt: -1 });
 
-    const existingBook = await Books.findById(bookId);
-    if (!existingBook) {
-        throw new ApiError(404, "Book not found");
-    }
-
-    if (existingBook.availableCopies === 0) {
-        throw new ApiError(400, "No copies available");
-    }
-
-    const activeTransaction = await Transactions.findOne({
-        userId,
-        bookId,
-        transactionType: "borrow",
-        returnDate: null
-    });
-
-    if (activeTransaction) {
-        throw new ApiError(400, "You already have this book borrowed");
-    }
-
-    const issuedDate = new Date();
-    const returnDate = new Date();
-    returnDate.setDate(returnDate.getDate() + 14);
-
-    const transaction = await Transactions.create({
-        userId,
-        bookId,
-        transactionType: "borrow",
-        issuedDate,
-        returnDate
-    });
-
-    if (!transaction) {
-        throw new ApiError(500, "Transaction failed");
-    }
-
-    await Books.findByIdAndUpdate(bookId, { $inc: { availableCopies: -1 } });
-
-    const populatedTransaction = await Transactions.findById(transaction._id)
-        .populate("bookId", "title author")
-        .populate("userId", "username email");
-
-    return res.status(200).json(new ApiResponse(200, populatedTransaction, "Book borrowed successfully"));
-});
-
-const returnBook = asyncHandler(async (req, res) => {
-    const { transactionId } = req.body;
-    const userId = req.user._id;
-
-    if (!transactionId) {
-        throw new ApiError(400, "Transaction ID is required");
-    }
-
-    const transaction = await Transactions.findById(transactionId);
-    if (!transaction) {
-        throw new ApiError(404, "Transaction not found");
-    }
-
-    if (transaction.userId.toString() !== userId.toString()) {
-        throw new ApiError(403, "You are not the owner of this transaction");
-    }
-
-    if (transaction.transactionType === "return") {
-        throw new ApiError(400, "Book already returned");
-    }
-
-    await Transactions.findByIdAndUpdate(transactionId, { transactionType: "return" });
-    await Books.findByIdAndUpdate(transaction.bookId, { $inc: { availableCopies: 1 } });
-
-    return res.status(200).json(new ApiResponse(200, null, "Book returned successfully"));
-});
-
-const getMyTransactions = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-
-    const transactions = await Transactions.find({ userId })
-        .populate("bookId", "title author isbn coverImage")
-        .sort({ issuedDate: -1 });
-
-    console.log("User transactions:", transactions);
-
-    return res.status(200).json(new ApiResponse(200, transactions, "Transactions fetched successfully"));
-});
-
-const getMyBorrows = asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-
-    const activeBorrows = await Transactions.find({
-        userId,
-        transactionType: "borrow"
-    }).populate("bookId", "title author isbn coverImage availableCopies");
-
-    return res.status(200).json(new ApiResponse(200, activeBorrows, "Active borrows fetched successfully"));
+    return res.status(200).json(new ApiResponse(200, downloads, "Downloads fetched successfully"));
 });
 
 const logout = asyncHandler(async (req, res) => {
@@ -206,4 +126,170 @@ const logout = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, null, "User logged out successfully"));
 });
 
-export { register, login, currentUser, borrowBook, returnBook, getMyTransactions, getMyBorrows, logout };
+const getBooks = asyncHandler(async (req, res) => {
+    const { search, category, page = 1, limit = 12 } = req.query;
+
+    const query = {};
+
+    if (search) {
+        query.$or = [
+            { title: { $regex: search, $options: "i" } },
+            { author: { $regex: search, $options: "i" } }
+        ];
+    }
+
+    if (category) {
+        query.category = category;
+    }
+
+    const skip = (page - 1) * limit;
+
+    const books = await Books.find(query)
+        .populate("category", "name")
+        .skip(skip)
+        .limit(parseInt(limit))
+        .sort({ title: 1 });
+
+    const total = await Books.countDocuments(query);
+
+    return res.status(200).json(new ApiResponse(200, { books, total, page: parseInt(page), pages: Math.ceil(total / limit) }, "Books fetched successfully"));
+});
+
+const getBookById = asyncHandler(async (req, res) => {
+    const book = await Books.findById(req.params.id).populate("category", "name");
+    if (!book) {
+        throw new ApiError(404, "Book not found");
+    }
+    return res.status(200).json(new ApiResponse(200, book, "Book fetched successfully"));
+});
+
+const readBook = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const book = await Books.findById(id);
+    if (!book) {
+        throw new ApiError(404, "Book not found");
+    }
+
+    if (!book.pdfFile) {
+        throw new ApiError(404, "PDF not available for this book");
+    }
+
+    const pdfPath = path.join(__dirname, '..', '..', 'uploads', 'pdfs', book.pdfFile);
+
+    if (!fs.existsSync(pdfPath)) {
+        throw new ApiError(404, "PDF file not found on server");
+    }
+
+    const stat = fs.statSync(pdfPath);
+
+    res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Length": stat.size,
+        "Content-Disposition": "inline",
+        "Accept-Ranges": "bytes"
+    });
+
+    const readStream = fs.createReadStream(pdfPath);
+    readStream.pipe(res);
+});
+
+const downloadBook = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const book = await Books.findById(id);
+    if (!book) {
+        throw new ApiError(404, "Book not found");
+    }
+
+    if (!book.pdfFile) {
+        throw new ApiError(404, "PDF not available for this book");
+    }
+
+    const pdfPath = path.join(__dirname, '..', '..', 'uploads', 'pdfs', book.pdfFile);
+
+    if (!fs.existsSync(pdfPath)) {
+        throw new ApiError(404, "PDF file not found on server");
+    }
+
+    await Downloads.create({ userId, bookId: id });
+
+    const filename = `${book.title.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+    const stat = fs.statSync(pdfPath);
+
+    res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Length": stat.size,
+        "Content-Disposition": `attachment; filename="${filename}"`
+    });
+
+    const readStream = fs.createReadStream(pdfPath);
+    readStream.pipe(res);
+});
+
+const forgotPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        throw new ApiError(400, "Email is required");
+    }
+
+    const user = await User.findOne({ email, isAdmin: { $ne: true } });
+    if (!user) {
+        return res.status(200).json(new ApiResponse(200, null, "If the email exists, a reset link has been sent"));
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = Date.now() + 3600000;
+    await user.save({ validateBeforeSave: false });
+
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+
+    await sendEmail({
+        to: user.email,
+        subject: "Password Reset Request",
+        text: `You requested a password reset. Use this link: ${resetUrl}. Expires in 1 hour.`,
+        html: `<p>You requested a password reset.</p><p>Click <a href="${resetUrl}">here</a> to reset your password. Expires in 1 hour.</p>`
+    });
+
+    return res.status(200).json(new ApiResponse(200, null, "If the email exists, a reset link has been sent"));
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    if (!password) {
+        throw new ApiError(400, "Password is required");
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    const user = await User.findOne({
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: { $gt: Date.now() },
+        isAdmin: { $ne: true }
+    });
+
+    if (!user) {
+        throw new ApiError(400, "Invalid or expired reset token");
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    return res.status(200).json(new ApiResponse(200, null, "Password reset successfully"));
+});
+
+export {
+    register, login, currentUser, getMyDownloads, logout,
+    getBooks, getBookById, readBook, downloadBook,
+    forgotPassword, resetPassword
+};

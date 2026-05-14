@@ -1,216 +1,146 @@
 import { useState, useEffect } from "react";
-import { useNavigate, NavLink } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
-import { getStats, getRecentTransactions } from "../../services/adminService";
+import { useNavigate } from "react-router-dom";
+import { useDispatch } from "react-redux";
+import { getStats, getRecentDownloads, logoutAdmin } from "../../services/adminService";
 import { clearUser } from "../../redux/authSlice";
 import { showToast } from "../../components/Toast";
-import api from "../../services/readerService";
 import Modal from "../../components/Modal";
+import Skeleton from "../../components/Skeleton";
 
-export default function Dashboard() {
-  const dispatch = useDispatch();
+export default function DashBoard() {
   const navigate = useNavigate();
-  const { user } = useSelector((state) => state.auth);
-  const [stats, setStats] = useState({ totalBooks: 0, totalUsers: 0, totalTransactions: 0 });
-  const [recentTransactions, setRecentTransactions] = useState([]);
+  const dispatch = useDispatch();
+  const [stats, setStats] = useState(null);
+  const [recent, setRecent] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState(null);
-  const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [showLogout, setShowLogout] = useState(false);
+  const [detailModal, setDetailModal] = useState(null);
 
   useEffect(() => {
-    if (user?.isAdmin) {
-      fetchData();
-    }
-  }, [user]);
-
-  const fetchData = async () => {
-    try {
-      const [statsData, transactionsData] = await Promise.all([
-        getStats(),
-        getRecentTransactions(10)
-      ]);
-      setStats(statsData);
-      setRecentTransactions(transactionsData.data);
-    } catch (err) {
-      console.error("Failed to load dashboard:", err);
-      showToast(dispatch, "error", "Failed to load dashboard");
-    } finally {
-      setLoading(false);
-    }
-  };
+    (async () => {
+      try {
+        const [statsRes, recentRes] = await Promise.all([
+          getStats(), getRecentDownloads(5)
+        ]);
+        setStats(statsRes.data);
+        setRecent(recentRes.data || []);
+      } catch (err) {
+        showToast(dispatch, "error", "Failed to load dashboard");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [dispatch]);
 
   const handleLogout = async () => {
     try {
-      await api.post("/admin/logout");
+      await logoutAdmin();
     } catch (err) {
-      console.error("Logout error:", err);
+      console.error(err);
     }
     dispatch(clearUser());
-    showToast(dispatch, "success", "Logged out successfully!");
     navigate("/admin/login");
-  };
-
-  const viewTransaction = (transaction) => {
-    setSelectedTransaction(transaction);
-    setShowTransactionModal(true);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+      <div className="p-6">
+        <Skeleton className="h-8 w-48 mb-6" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
       </div>
     );
   }
 
+  const statCards = [
+    { label: "Total Books", value: stats?.totalBooks || 0, color: "bg-blue-500", icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" },
+    { label: "Total Users", value: stats?.totalUsers || 0, color: "bg-emerald-500", icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" },
+    { label: "Total Downloads", value: stats?.totalDownloads || 0, color: "bg-violet-500", icon: "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" },
+    { label: "Pending Approvals", value: stats?.pendingApprovals || 0, color: "bg-amber-500", icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-10">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p className="text-gray-500">Welcome back, {user?.firstName} {user?.lastName}</p>
-          </div>
-          <button onClick={() => setShowLogoutModal(true)} className="px-6 py-2 bg-red-50 text-red-600 font-medium rounded-lg hover:bg-red-100">
-            Logout
-          </button>
-        </div>
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+        <button onClick={() => setShowLogout(true)} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-sm">Logout</button>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-2xl p-6 shadow-md">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Books</p>
-                <h2 className="text-3xl font-bold text-gray-900 mt-1">{stats.totalBooks}</h2>
-              </div>
-              <span className="text-4xl">📚</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {statCards.map((card, idx) => (
+          <div key={idx} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-center gap-4">
+            <div className={`w-12 h-12 ${card.color} rounded-xl flex items-center justify-center`}>
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={card.icon} />
+              </svg>
             </div>
-            <NavLink to="/admin/books" className="mt-4 text-sm text-emerald-600 hover:underline block">View all →</NavLink>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 shadow-md">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Users</p>
-                <h2 className="text-3xl font-bold text-gray-900 mt-1">{stats.totalUsers}</h2>
-              </div>
-              <span className="text-4xl">👥</span>
-            </div>
-            <NavLink to="/admin/view-users" className="mt-4 text-sm text-emerald-600 hover:underline block">View all →</NavLink>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 shadow-md">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Transactions</p>
-                <h2 className="text-3xl font-bold text-gray-900 mt-1">{stats.totalTransactions}</h2>
-              </div>
-              <span className="text-4xl">📋</span>
+            <div>
+              <p className="text-2xl font-bold text-gray-800">{card.value}</p>
+              <p className="text-sm text-gray-500">{card.label}</p>
             </div>
           </div>
-        </div>
+        ))}
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white rounded-2xl shadow-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Transactions</h3>
-            {recentTransactions.length === 0 ? (
-              <p className="text-gray-400 py-8 text-center">No transactions yet</p>
-            ) : (
-              <div className="space-y-3">
-                {recentTransactions.map((t) => (
-                  <div
-                    key={t._id}
-                    onClick={() => viewTransaction(t)}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`w-10 h-10 rounded-full flex items-center justify-center ${t.transactionType === "borrow" ? "bg-emerald-100 text-emerald-600" : "bg-green-100 text-green-600"}`}>
-                        {t.transactionType === "borrow" ? "📖" : "✅"}
-                      </span>
-                      <div>
-                        <p className="font-medium text-gray-900">{t.bookId?.title || "Unknown Book"}</p>
-                        <p className="text-sm text-gray-500">@{t.userId?.username || "Unknown User"}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${t.transactionType === "borrow" ? "bg-emerald-100 text-emerald-700" : "bg-green-100 text-green-700"}`}>
-                        {t.transactionType === "borrow" ? "Borrowed" : "Returned"}
-                      </span>
-                      <p className="text-xs text-gray-400 mt-1">{new Date(t.issueDate).toLocaleDateString()}</p>
-                    </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <h2 className="font-semibold text-gray-800 mb-4">Recent Downloads</h2>
+          {recent.length === 0 ? (
+            <p className="text-gray-400 text-sm">No downloads yet</p>
+          ) : (
+            <div className="space-y-2">
+              {recent.map((d) => (
+                <div key={d._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                  onClick={() => setDetailModal(d)}
+                >
+                  <div>
+                    <p className="font-medium text-gray-800 text-sm">{d.bookId?.title || "Unknown"}</p>
+                    <p className="text-xs text-gray-500">{d.userId?.firstName} {d.userId?.lastName} ({d.userId?.username})</p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-            <div className="space-y-3">
-              <NavLink to="/admin/add-books">
-                <button className="w-full px-6 py-3 bg-emerald-500 text-white font-medium rounded-xl hover:bg-emerald-600 transition text-left">
-                  ➕ Add New Book
-                </button>
-              </NavLink>
-              <NavLink to="/admin/books">
-                <button className="w-full px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition text-left">
-                  📚 Manage Books
-                </button>
-              </NavLink>
-              <NavLink to="/admin/view-users">
-                <button className="w-full px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition text-left">
-                  👥 Manage Users
-                </button>
-              </NavLink>
+                  <span className="text-xs text-gray-400">{new Date(d.downloadedAt).toLocaleDateString()}</span>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <h2 className="font-semibold text-gray-800 mb-4">Quick Actions</h2>
+          <div className="space-y-2">
+            <button onClick={() => navigate("/admin/add-books")} className="w-full text-left p-3 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 text-sm font-medium">
+              + Add New Book
+            </button>
+            <button onClick={() => navigate("/admin/books")} className="w-full text-left p-3 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm font-medium">
+              Manage Books
+            </button>
+            <button onClick={() => navigate("/admin/view-users")} className="w-full text-left p-3 bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 text-sm font-medium">
+              Manage Users
+            </button>
           </div>
         </div>
       </div>
 
-      <Modal isOpen={showLogoutModal} onClose={() => setShowLogoutModal(false)} title="Confirm Logout" size="sm">
-        <p className="text-gray-600 mb-6">Are you sure you want to logout?</p>
-        <div className="flex gap-4">
-          <button onClick={handleLogout} className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Logout</button>
-          <button onClick={() => setShowLogoutModal(false)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-        </div>
-      </Modal>
-
-      <Modal isOpen={showTransactionModal} onClose={() => setShowTransactionModal(false)} title="Transaction Details" size="md">
-        {selectedTransaction && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
-              <span className={`w-12 h-12 rounded-full flex items-center justify-center ${selectedTransaction.transactionType === "borrow" ? "bg-emerald-100 text-emerald-600" : "bg-green-100 text-green-600"}`}>
-                {selectedTransaction.transactionType === "borrow" ? "📖" : "✅"}
-              </span>
-              <div>
-                <p className="text-lg font-semibold">{selectedTransaction.bookId?.title}</p>
-                <p className="text-gray-500">by {selectedTransaction.bookId?.author}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-gray-500 text-sm">User</p>
-                <p className="font-medium">{selectedTransaction.userId?.username}</p>
-                <p className="text-sm text-gray-400">{selectedTransaction.userId?.email}</p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-gray-500 text-sm">Type</p>
-                <span className={`px-2 py-1 rounded text-xs font-medium ${selectedTransaction.transactionType === "borrow" ? "bg-emerald-100 text-emerald-700" : "bg-green-100 text-green-700"}`}>
-                  {selectedTransaction.transactionType === "borrow" ? "Borrow" : "Return"}
-                </span>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-gray-500 text-sm">Issue Date</p>
-                <p className="font-medium">{new Date(selectedTransaction.issueDate).toLocaleDateString()}</p>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-3">
-                <p className="text-gray-500 text-sm">Due Date</p>
-                <p className="font-medium">{new Date(selectedTransaction.returnDate).toLocaleDateString()}</p>
-              </div>
+      <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title="Download Details" size="md">
+        {detailModal && (
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div><span className="text-gray-500">User:</span><p className="font-medium">{detailModal.userId?.firstName} {detailModal.userId?.lastName}</p></div>
+              <div><span className="text-gray-500">Username:</span><p className="font-medium">@{detailModal.userId?.username}</p></div>
+              <div><span className="text-gray-500">Book:</span><p className="font-medium">{detailModal.bookId?.title}</p></div>
+              <div><span className="text-gray-500">Author:</span><p className="font-medium">{detailModal.bookId?.author}</p></div>
+              <div><span className="text-gray-500">Downloaded:</span><p className="font-medium">{new Date(detailModal.downloadedAt).toLocaleString()}</p></div>
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={showLogout} onClose={() => setShowLogout(false)} title="Confirm Logout" size="sm">
+        <p className="text-gray-600 mb-4">Are you sure you want to logout?</p>
+        <div className="flex gap-3 justify-end">
+          <button onClick={() => setShowLogout(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button onClick={handleLogout} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Logout</button>
+        </div>
       </Modal>
     </div>
   );

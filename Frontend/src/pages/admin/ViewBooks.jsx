@@ -1,243 +1,235 @@
-import { useState, useEffect } from "react";
-import { useDispatch } from "react-redux";
-import { getBooks, deleteBook, getCategories, updateBook } from "../../services/adminService";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import { getBooks, updateBook, deleteBook, getCategories } from "../../services/adminService";
 import { showToast } from "../../components/Toast";
-import Pagination from "../../components/Pagination";
+import { useDispatch } from "react-redux";
 import Modal from "../../components/Modal";
-import { TableRowSkeleton } from "../../components/Skeleton";
-import EmptyState from "../../components/EmptyState";
+import Pagination from "../../components/Pagination";
 import CreatableSelect from "react-select/creatable";
+import EmptyState from "../../components/EmptyState";
+import TableRowSkeleton from "../../components/Skeleton";
 
 export default function ViewBooks() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const dispatch = useDispatch();
   const [books, setBooks] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [loading, setLoading] = useState(true);
 
-  const [editingBook, setEditingBook] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const page = parseInt(searchParams.get("page")) || 1;
+  const search = searchParams.get("search") || "";
+  const category = searchParams.get("category") || "";
+
+  const [selectedBook, setSelectedBook] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editPdf, setEditPdf] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
 
-  useEffect(() => {
-    fetchCategories();
-  }, []);
-
-  useEffect(() => {
-    fetchBooks();
-  }, [currentPage, selectedCategory, search]);
-
-  const fetchCategories = async () => {
-    try {
-      const data = await getCategories();
-      setCategories(data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchBooks = async () => {
+  const fetchBooks = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page: currentPage, limit: 10 };
+      const params = { page, limit: 10 };
       if (search) params.search = search;
-      if (selectedCategory) params.category = selectedCategory;
-      const data = await getBooks(params);
-      setBooks(data.data.books);
-      setTotalPages(data.data.pages);
-      setTotal(data.data.total);
+      if (category) params.category = category;
+      const res = await getBooks(params);
+      setBooks(res.data?.books || []);
+      setTotal(res.data?.total || 0);
+      setPages(res.data?.pages || 1);
     } catch (err) {
-      showToast(dispatch, "error", "Failed to fetch books");
+      showToast(dispatch, "error", "Failed to load books");
     } finally {
       setLoading(false);
     }
+  }, [page, search, category, dispatch]);
+
+  useEffect(() => {
+    fetchBooks();
+  }, [fetchBooks]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getCategories();
+        setCategories((res.data || []).map((c) => ({ value: c._id, label: c.name })));
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+  }, []);
+
+  const updateParams = (updates) => {
+    const params = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    });
+    if (updates.search !== undefined || updates.category !== undefined) params.delete("page");
+    setSearchParams(params);
   };
 
-  const handleEdit = (book) => {
-    setEditingBook({
-      _id: book._id,
-      title: book.title,
-      author: book.author,
-      edition: book.edition,
-      isbn: book.isbn,
-      publishedYear: book.publishedYear,
-      publisher: book.publisher,
-      totalCopies: book.totalCopies,
-      category: book.category?.name || "",
+  const openEdit = (book) => {
+    setSelectedBook(book);
+    setEditForm({
+      title: book.title || "",
+      author: book.author || "",
+      category: book.category ? { value: book.category._id, label: book.category.name } : null,
+      edition: book.edition || "",
+      isbn: book.isbn || "",
+      publishedYear: book.publishedYear || "",
+      publisher: book.publisher || "",
       coverImage: book.coverImage || "",
       description: book.description || "",
+      pages: book.pages || ""
     });
-    setShowEditModal(true);
+    setEditPdf(null);
   };
 
-  const handleUpdateBook = async (e) => {
-    e.preventDefault();
+  const handleEdit = async () => {
+    if (!editForm.title || !editForm.author || !editForm.category || !editForm.edition || !editForm.publishedYear || !editForm.publisher) {
+      showToast(dispatch, "error", "Fill all required fields");
+      return;
+    }
     try {
-      await updateBook(editingBook._id, editingBook);
-      showToast(dispatch, "success", "Book updated successfully!");
-      setShowEditModal(false);
-      setEditingBook(null);
+      const formData = new FormData();
+      Object.entries(editForm).forEach(([key, val]) => {
+        if (key === "category") formData.append("category", val.label);
+        else if (val) formData.append(key, val);
+      });
+      if (editPdf) formData.append("pdfFile", editPdf);
+
+      await updateBook(selectedBook._id, formData);
+      showToast(dispatch, "success", "Book updated");
+      setSelectedBook(null);
       fetchBooks();
     } catch (err) {
       showToast(dispatch, "error", err);
     }
   };
 
-  const handleDeleteClick = (id) => {
-    setDeleteId(id);
-    setShowDeleteModal(true);
-  };
-
   const handleDelete = async () => {
-    setDeletingId(deleteId);
     try {
       await deleteBook(deleteId);
-      showToast(dispatch, "success", "Book deleted successfully!");
-      setShowDeleteModal(false);
+      showToast(dispatch, "success", "Book deleted");
       setDeleteId(null);
       fetchBooks();
     } catch (err) {
       showToast(dispatch, "error", err);
-    } finally {
-      setDeletingId(null);
     }
   };
 
-  const categoryOptions = categories.map((c) => ({ label: c.name, value: c._id }));
-
   return (
-    <div className="min-h-screen bg-gray-50 p-6 md:p-10">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">All Books</h1>
-
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Manage Books</h1>
+        <div className="flex gap-2">
           <input
-            type="text"
+            placeholder="Search..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-            placeholder="Search by title, author, or ISBN..."
-            className="flex-1 px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+            onChange={(e) => updateParams({ search: e.target.value })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 outline-none w-48"
           />
           <select
-            value={selectedCategory}
-            onChange={(e) => { setSelectedCategory(e.target.value); setCurrentPage(1); }}
-            className="px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none min-w-48"
+            value={category}
+            onChange={(e) => updateParams({ category: e.target.value })}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 outline-none bg-white"
           >
             <option value="">All Categories</option>
-            {categories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            {categories.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </div>
+      </div>
 
-        <div className="bg-white rounded-2xl shadow overflow-hidden">
-          {loading ? (
-            <table className="w-full"><tbody>{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={6} />)}</tbody></table>
-          ) : books.length === 0 ? (
-            <EmptyState icon="📚" title="No books found" description={search || selectedCategory ? "Try adjusting your filters" : "Add some books to get started"} />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Book</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Available</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ISBN</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {books.map((book) => (
-                    <tr key={book._id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="font-medium text-gray-900">{book.title}</p>
-                          <p className="text-sm text-gray-500">{book.author}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">{book.category?.name || "N/A"}</td>
-                      <td className="px-6 py-4">
-                        <span className={`font-medium ${book.availableCopies > 0 ? "text-green-600" : "text-red-500"}`}>
-                          {book.availableCopies} / {book.totalCopies}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-500">{book.isbn}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-2">
-                          <button onClick={() => handleEdit(book)} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200">Edit</button>
-                          <button onClick={() => handleDeleteClick(book._id)} className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm hover:bg-red-200">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {loading ? (
+        <TableRowSkeleton columns={6} />
+      ) : books.length === 0 ? (
+        <EmptyState title="No books found" description={search ? "Try a different search" : "Add your first book"} />
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 text-left text-sm text-gray-500">
+              <tr>
+                <th className="p-3 font-medium">Title</th>
+                <th className="p-3 font-medium">Author</th>
+                <th className="p-3 font-medium">Category</th>
+                <th className="p-3 font-medium">PDF</th>
+                <th className="p-3 font-medium">Pages</th>
+                <th className="p-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {books.map((book) => (
+                <tr key={book._id} className="hover:bg-gray-50 text-sm">
+                  <td className="p-3 font-medium text-gray-800">{book.title}</td>
+                  <td className="p-3 text-gray-600">{book.author}</td>
+                  <td className="p-3">{book.category?.name && <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-full text-xs">{book.category.name}</span>}</td>
+                  <td className="p-3">
+                    {book.pdfFile ? (
+                      <span className="text-emerald-600 font-medium text-xs bg-emerald-50 px-2 py-1 rounded-full">Uploaded</span>
+                    ) : (
+                      <span className="text-red-400 text-xs bg-red-50 px-2 py-1 rounded-full">Missing</span>
+                    )}
+                  </td>
+                  <td className="p-3 text-gray-600">{book.pages || "—"}</td>
+                  <td className="p-3">
+                    <div className="flex gap-2">
+                      <button onClick={() => openEdit(book)} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 text-xs font-medium">Edit</button>
+                      <button onClick={() => setDeleteId(book._id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs font-medium">Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {pages > 1 && (
+            <div className="p-4 flex justify-center border-t">
+              <Pagination currentPage={page} totalPages={pages} onPageChange={(p) => updateParams({ page: p.toString() })} />
             </div>
           )}
         </div>
+      )}
 
-        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
-      </div>
-
-      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Book" size="lg">
-        {editingBook && (
-          <form onSubmit={handleUpdateBook} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                <input type="text" value={editingBook.title} onChange={(e) => setEditingBook({ ...editingBook, title: e.target.value })} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none" required />
+      <Modal isOpen={!!selectedBook} onClose={() => setSelectedBook(null)} title="Edit Book" size="lg">
+        {editForm && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-xs text-gray-500">Title *</label><input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none" /></div>
+              <div><label className="text-xs text-gray-500">Author *</label><input value={editForm.author} onChange={(e) => setEditForm({ ...editForm, author: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none" /></div>
+              <div><label className="text-xs text-gray-500">Category *</label>
+                <CreatableSelect
+                  isClearable
+                  options={categories}
+                  value={editForm.category}
+                  onChange={(val) => setEditForm({ ...editForm, category: val })}
+                  className="mt-1 text-sm"
+                />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Author</label>
-                <input type="text" value={editingBook.author} onChange={(e) => setEditingBook({ ...editingBook, author: e.target.value })} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none" required />
-              </div>
+              <div><label className="text-xs text-gray-500">Edition *</label><input value={editForm.edition} onChange={(e) => setEditForm({ ...editForm, edition: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none" /></div>
+              <div><label className="text-xs text-gray-500">ISBN</label><input value={editForm.isbn} onChange={(e) => setEditForm({ ...editForm, isbn: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none" /></div>
+              <div><label className="text-xs text-gray-500">Year *</label><input type="number" value={editForm.publishedYear} onChange={(e) => setEditForm({ ...editForm, publishedYear: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none" /></div>
+              <div><label className="text-xs text-gray-500">Publisher *</label><input value={editForm.publisher} onChange={(e) => setEditForm({ ...editForm, publisher: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none" /></div>
+              <div><label className="text-xs text-gray-500">Pages</label><input type="number" value={editForm.pages} onChange={(e) => setEditForm({ ...editForm, pages: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none" /></div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">ISBN</label>
-                <input type="text" value={editingBook.isbn} onChange={(e) => setEditingBook({ ...editingBook, isbn: e.target.value })} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Edition</label>
-                <input type="text" value={editingBook.edition} onChange={(e) => setEditingBook({ ...editingBook, edition: e.target.value })} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Total Copies</label>
-                <input type="number" value={editingBook.totalCopies} onChange={(e) => setEditingBook({ ...editingBook, totalCopies: parseInt(e.target.value) })} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none" required />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <CreatableSelect isMulti={false} value={{ label: editingBook.category, value: editingBook.category }} options={categoryOptions} onChange={(opt) => setEditingBook({ ...editingBook, category: opt?.value })} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Published Year</label>
-                <input type="number" value={editingBook.publishedYear} onChange={(e) => setEditingBook({ ...editingBook, publishedYear: parseInt(e.target.value) })} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none" required />
-              </div>
-            </div>
+            <div><label className="text-xs text-gray-500">Cover URL</label><input value={editForm.coverImage} onChange={(e) => setEditForm({ ...editForm, coverImage: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none" /></div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Publisher</label>
-              <input type="text" value={editingBook.publisher} onChange={(e) => setEditingBook({ ...editingBook, publisher: e.target.value })} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-amber-500 outline-none" required />
+              <label className="text-xs text-gray-500">Replace PDF</label>
+              <input type="file" accept=".pdf,application/pdf" onChange={(e) => setEditPdf(e.target.files[0])} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-amber-50 file:text-amber-700 file:text-xs" />
             </div>
-            <div className="flex gap-4 pt-4">
-              <button type="submit" className="flex-1 py-3 bg-amber-500 text-white font-semibold rounded-lg hover:bg-amber-600">Update Book</button>
-              <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+            <div><label className="text-xs text-gray-500">Description</label><textarea rows={3} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm mt-1 focus:ring-2 focus:ring-amber-500 outline-none resize-none" /></div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={handleEdit} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm">Save</button>
+              <button onClick={() => setSelectedBook(null)} className="px-4 py-2 border rounded-lg text-gray-700 text-sm">Cancel</button>
             </div>
-          </form>
+          </div>
         )}
       </Modal>
 
-      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Delete Book" size="sm">
-        <p className="text-gray-600 mb-6">Are you sure you want to delete this book? This action cannot be undone.</p>
-        <div className="flex gap-4">
-          <button onClick={handleDelete} disabled={deletingId} className="flex-1 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400">Delete</button>
-          <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+      <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} title="Delete Book" size="sm">
+        <p className="text-gray-600 mb-4">Are you sure you want to delete this book? This action cannot be undone.</p>
+        <div className="flex gap-3 justify-end">
+          <button onClick={() => setDeleteId(null)} className="px-4 py-2 border rounded-lg text-gray-700">Cancel</button>
+          <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Delete</button>
         </div>
       </Modal>
     </div>

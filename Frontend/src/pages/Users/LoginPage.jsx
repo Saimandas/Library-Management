@@ -1,95 +1,95 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { loginUser } from "../../services/readerService";
 import { setUser } from "../../redux/authSlice";
 import { showToast } from "../../components/Toast";
 
 export default function LoginPage() {
-  const [formData, setFormData] = useState({ email: "", password: "" });
-  const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
-  const dispatch = useDispatch();
   const navigate = useNavigate();
-
-  const validate = () => {
-    const newErrors = {};
-    if (!formData.email) newErrors.email = "Email is required";
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = "Invalid email format";
-    if (!formData.password) newErrors.password = "Password is required";
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const dispatch = useDispatch();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    setError("");
+
+    if (!email || !password) {
+      setError("All fields are required");
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await loginUser(formData.email, formData.password);
-      
-      if (data.data.isAdmin) {
-        showToast(dispatch, "error", "Admin users must login via admin portal");
-        setLoading(false);
-        return;
-      }
-      
-      dispatch(setUser(data.data));
-      showToast(dispatch, "success", "Welcome back!");
+      const res = await loginUser(email, password);
+      dispatch(setUser(res.data));
+      showToast(dispatch, "success", "Login successful!");
       navigate("/books");
-    } catch (error) {
-      showToast(dispatch, "error", error);
+    } catch (err) {
+      if (err === "Account pending admin approval") {
+        setError("Your account is pending admin approval. Please wait for approval.");
+      } else {
+        setError(err);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4 py-12 bg-gray-50">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-gray-900">Welcome Back</h2>
-          <p className="text-gray-500 mt-2">Sign in to your account</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100 px-4">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-800">Welcome Back</h1>
+          <p className="text-gray-500 text-sm mt-1">Login to your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">{error}</div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
               type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className={`w-full px-4 py-3 rounded-lg border ${errors.email ? "border-red-500" : "border-gray-300"} focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition`}
-              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
             />
-            {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className={`w-full px-4 py-3 rounded-lg border ${errors.password ? "border-red-500" : "border-gray-300"} focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition`}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
             />
-            {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
           </div>
-
+          <div className="flex justify-end">
+            <Link to="/forgot-password" className="text-sm text-emerald-600 hover:underline">
+              Forgot Password?
+            </Link>
+          </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:bg-emerald-400 transition"
+            className="w-full py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition font-medium"
           >
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
 
-        <p className="text-center text-gray-500 mt-6">
+        <p className="mt-4 text-center text-sm text-gray-500">
           Don't have an account?{" "}
-          <Link to="/register" className="text-emerald-600 font-semibold hover:underline">
-            Sign up
+          <Link to="/register" className="text-emerald-600 hover:underline font-medium">
+            Register
           </Link>
         </p>
       </div>

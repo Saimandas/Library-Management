@@ -36,7 +36,6 @@ const checkIsAdmin=asyncHandler(async(req,res,next)=>{
     }
     const decodedToken=jwt.verify(accessToken,keys.ACCESS_TOKEN_SECRET);
     const user=await User.findById(decodedToken._id);
-    console.log("decoded User",user);
     
     if (!user || user.isAdmin===false) {
         throw new ApiError(403,"Only admin can access this route");

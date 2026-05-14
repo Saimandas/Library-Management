@@ -19,6 +19,9 @@ const checkIsLoggedIn=asyncHandler(async(req,res,next)=>{
         if (user.isActive === false) {
             throw new ApiError(403,"Account is suspended");
         }
+        if (!user.isAdmin && !user.isApproved) {
+            throw new ApiError(403,"Account pending admin approval");
+        }
         const newRefreshToken=generateRefreshToken(user);
         const newAccessToken=generateAccessToken(user);
         user.refreshToken=newRefreshToken;
@@ -43,6 +46,9 @@ const checkIsLoggedIn=asyncHandler(async(req,res,next)=>{
     }
     if (user.isActive === false) {
         throw new ApiError(403,"Account is suspended");
+    }
+    if (!user.isAdmin && !user.isApproved) {
+        throw new ApiError(403,"Account pending admin approval");
     }
     req.user=user;
     return next();
